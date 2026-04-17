@@ -71,7 +71,7 @@ def collect_latest(entries: List[Dict], count: int) -> List[Tuple[str, Dict]]:
     seen = set()
     for item in entries:
         vid = (
-            item.get("id")
+            extract_video_id(item.get("id", ""))
             or extract_video_id(item.get("url", ""))
             or extract_video_id(item.get("webpage_url", ""))
         )

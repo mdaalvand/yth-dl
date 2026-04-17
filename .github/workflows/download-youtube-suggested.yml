@@ -95,6 +95,7 @@ jobs:
           SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
           MAX_429_RETRIES: "4"
           RETRY_BASE_SLEEP_SECONDS: "15"
+          CONTINUE_ON_ERROR: "true"
         run: |
           set -euo pipefail
           python scripts/download_suggested_videos.py
@@ -145,6 +146,12 @@ jobs:
             else
               echo "- No files were produced."
             fi
+            if [ -f downloads_failed.json ]; then
+              failed_count="$(jq -r '.failed_count // 0' downloads_failed.json)"
+              echo
+              echo "## Failed Videos"
+              echo "- Failed count: ${failed_count}"
+            fi
           } > release_notes.md
 
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -159,4 +166,6 @@ jobs:
             suggested_videos.txt
             suggested_videos.json
             suggested_videos.md
+            downloads_failed.json
+            downloads_failed.txt
             downloads/**

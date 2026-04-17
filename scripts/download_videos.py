@@ -5,8 +5,9 @@ import shlex
 import subprocess
 import sys
 import time
+import json
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict
 
 
 @dataclass
@@ -77,6 +78,7 @@ def main() -> int:
     subtitle_langs = os.getenv("SUBTITLE_LANGS", "fa.*,en.*,fa,en").strip()
     max_429_retries = int(os.getenv("MAX_429_RETRIES", "4").strip() or "4")
     retry_base_sleep = int(os.getenv("RETRY_BASE_SLEEP_SECONDS", "15").strip() or "15")
+    continue_on_error = env_bool("CONTINUE_ON_ERROR", True)
 
     urls = parse_video_inputs(video_inputs)
     if not urls:
@@ -133,6 +135,9 @@ def main() -> int:
     if embed_subtitles:
         subtitle_args = ["--write-subs", "--write-auto-subs", "--sub-langs", subtitle_langs, "--embed-subs"]
 
+    failures: List[Dict[str, str]] = []
+    success_count = 0
+
     for idx, url in enumerate(urls, start=1):
         print(f"\n=== ({idx}/{len(urls)}) Downloading: {url}")
 
@@ -140,6 +145,7 @@ def main() -> int:
         result = run_with_429_retry(full_cmd, max_429_retries, retry_base_sleep)
 
         if result.ok:
+            success_count += 1
             continue
 
         # If subtitle downloads are rate-limited, keep the video workflow successful
@@ -150,16 +156,36 @@ def main() -> int:
             no_sub_result = run_with_429_retry(no_sub_cmd, max_429_retries, retry_base_sleep)
             if no_sub_result.ok:
                 print("Downloaded successfully without subtitles due to subtitle 429 limits.")
+                success_count += 1
                 continue
             result = no_sub_result
 
         print("\nDownload failed.")
-        return 1
+        short_reason = "unknown_error"
+        for line in reversed((result.output or "").splitlines()):
+            line = line.strip()
+            if line.startswith("ERROR:"):
+                short_reason = line
+                break
+        failures.append({"url": url, "reason": short_reason})
+        if not continue_on_error:
+            return 1
+        print("Skipping failed video and continuing with next item...")
 
-    print("\nAll downloads finished.")
+    with open("downloads_failed.json", "w", encoding="utf-8") as f:
+        json.dump({"failed_count": len(failures), "failed": failures}, f, ensure_ascii=False, indent=2)
+
+    with open("downloads_failed.txt", "w", encoding="utf-8") as f:
+        for item in failures:
+            f.write(f"{item['url']} | {item['reason']}\n")
+
+    print("\nDownload run finished.")
+    print(f"Successful videos: {success_count}")
+    print(f"Failed videos: {len(failures)}")
+    if success_count == 0:
+        return 1
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

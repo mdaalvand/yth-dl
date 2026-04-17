@@ -53,7 +53,7 @@ def collect_home_recommendations(home_json: Dict, max_results: int) -> List[Tupl
     seen = set()
     for item in entries:
         vid = (
-            item.get("id")
+            extract_video_id(item.get("id", ""))
             or extract_video_id(item.get("url", ""))
             or extract_video_id(item.get("webpage_url", ""))
         )
