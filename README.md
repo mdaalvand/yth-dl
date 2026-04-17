@@ -11,7 +11,7 @@ Automate YouTube download and YouTube search with GitHub Actions.
 5. Upload downloaded files to GitHub Releases
 6. Separate search workflow that publishes rich result details in a Release
 7. Home recommendations workflow (personalized using your YouTube cookies)
-8. Local command/script to download latest videos from a channel
+8. Workflow + local script to download latest videos from a channel
 
 ## Workflow: Download Videos
 
@@ -91,6 +91,20 @@ CHANNEL_INPUT="@MrBeast" CHANNEL_COUNT="3" python scripts/download_channel_lates
 ```
 
 `CHANNEL_INPUT` supports channel URLs and `@handle`. The script resolves `/videos` automatically.
+
+## Workflow: Download Latest Channel Videos
+
+File: `.github/workflows/download-youtube-channel-latest.yml`
+
+### Inputs
+
+1. `channel_input` (required): channel URL or `@handle`
+2. `channel_count` (optional): how many latest videos to download (default: `5`)
+3. `quality` (optional): target quality (default: `480`)
+4. `embed_subtitles` (optional): embed subtitles into videos (default: `true`)
+5. `embed_chapters` (optional): embed chapters into videos (default: `true`)
+6. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
+7. `release_name` (optional): custom release title
 
 ## Quick Start
 

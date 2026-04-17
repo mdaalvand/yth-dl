@@ -1,0 +1,169 @@
+name: Download Latest Channel YouTube Videos
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel_input:
+        description: "Channel URL or @handle"
+        required: true
+        type: string
+      channel_count:
+        description: "How many latest videos to download"
+        required: true
+        default: "5"
+        type: choice
+        options:
+          - "3"
+          - "5"
+          - "10"
+          - "20"
+      quality:
+        description: "Target quality (closest available)"
+        required: true
+        default: "480"
+        type: choice
+        options:
+          - "144"
+          - "240"
+          - "360"
+          - "480"
+          - "720"
+          - "1080"
+      embed_subtitles:
+        description: "Embed subtitles into output video"
+        required: true
+        default: true
+        type: boolean
+      embed_chapters:
+        description: "Embed chapters into output video"
+        required: true
+        default: true
+        type: boolean
+      subtitle_langs:
+        description: "Subtitle languages for yt-dlp --sub-langs"
+        required: true
+        default: "fa.*,en.*,fa,en"
+        type: string
+      release_name:
+        description: "Optional release title"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  channel_latest_download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node.js (YouTube JS runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yt-dlp
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg jq
+
+      - name: Prepare optional cookies
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: |
+          set -euo pipefail
+          if [ -n "${YT_COOKIES:-}" ]; then
+            printf '%s\n' "$YT_COOKIES" > cookies.txt
+            echo "Cookies file detected and prepared."
+          else
+            echo "No cookies secret provided; continuing without cookies."
+          fi
+
+      - name: Download latest channel videos
+        env:
+          CHANNEL_INPUT: ${{ github.event.inputs.channel_input }}
+          CHANNEL_COUNT: ${{ github.event.inputs.channel_count }}
+          QUALITY: ${{ github.event.inputs.quality }}
+          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
+          MAX_429_RETRIES: "4"
+          RETRY_BASE_SLEEP_SECONDS: "15"
+        run: |
+          set -euo pipefail
+          python scripts/download_channel_latest.py
+
+      - name: Build release notes
+        id: notes
+        env:
+          CHANNEL_INPUT: ${{ github.event.inputs.channel_input }}
+          CHANNEL_COUNT: ${{ github.event.inputs.channel_count }}
+          QUALITY: ${{ github.event.inputs.quality }}
+          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: |
+          set -euo pipefail
+
+          TAG="channel-latest-download-$(date -u +'%Y%m%d-%H%M%S')"
+          {
+            echo "# Latest Channel Download Results"
+            echo
+            echo "- Channel input: ${CHANNEL_INPUT}"
+            echo "- Requested latest videos: ${CHANNEL_COUNT}"
+            echo "- Quality target: ${QUALITY}p"
+            echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
+            echo "- Subtitle langs: ${SUBTITLE_LANGS}"
+            echo "- Chapters embedded: ${EMBED_CHAPTERS}"
+            if [ -n "${YT_COOKIES:-}" ]; then
+              echo "- Cookies provided: true"
+            else
+              echo "- Cookies provided: false"
+            fi
+            echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "## Selected Videos"
+            if [ -f channel_latest_videos.md ]; then
+              cat channel_latest_videos.md
+            else
+              echo "- No channel list generated."
+            fi
+            echo
+            echo "## Downloaded Files"
+            if ls downloads/* >/dev/null 2>&1; then
+              for file in downloads/*; do
+                size="$(du -h "$file" | cut -f1)"
+                name="$(basename "$file")"
+                echo "- ${name} (${size})"
+              done
+            else
+              echo "- No files were produced."
+            fi
+          } > release_notes.md
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
+          body_path: release_notes.md
+          files: |
+            channel_latest_videos.txt
+            channel_latest_videos.json
+            channel_latest_videos.md
+            downloads/**
+
