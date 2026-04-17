@@ -83,22 +83,22 @@ def main() -> int:
         home_url,
     ]
     home_json = run_json(home_cmd)
-    suggested = collect_home_recommendations(home_json, max_results)
-    if not suggested:
+    recommended = collect_home_recommendations(home_json, max_results)
+    if not recommended:
         print("No recommended videos found in home feed.")
         return 1
 
     os.makedirs("downloads", exist_ok=True)
-    with open("suggested_videos.txt", "w", encoding="utf-8") as f:
-        for url, _ in suggested:
+    with open("recommended_videos.txt", "w", encoding="utf-8") as f:
+        for url, _ in recommended:
             f.write(url + "\n")
 
-    with open("suggested_videos.json", "w", encoding="utf-8") as f:
+    with open("recommended_videos.json", "w", encoding="utf-8") as f:
         json.dump(
             {
                 "source": home_url,
-                "count": len(suggested),
-                "suggested": [
+                "count": len(recommended),
+                "recommended": [
                     {
                         "url": url,
                         "id": item.get("id"),
@@ -107,7 +107,7 @@ def main() -> int:
                         "duration": item.get("duration"),
                         "view_count": item.get("view_count"),
                     }
-                    for url, item in suggested
+                    for url, item in recommended
                 ],
             },
             f,
@@ -115,18 +115,18 @@ def main() -> int:
             indent=2,
         )
 
-    with open("suggested_videos.md", "w", encoding="utf-8") as f:
+    with open("recommended_videos.md", "w", encoding="utf-8") as f:
         f.write("# Home Recommended Videos\n\n")
         f.write(f"- Source: {home_url}\n")
-        f.write(f"- Selected: {len(suggested)}\n\n")
-        for idx, (url, item) in enumerate(suggested, start=1):
+        f.write(f"- Selected: {len(recommended)}\n\n")
+        for idx, (url, item) in enumerate(recommended, start=1):
             title = item.get("title") or "N/A"
             uploader = item.get("uploader") or item.get("channel") or "N/A"
             f.write(f"{idx}. {title} | {uploader}\n")
             f.write(f"   - {url}\n")
 
     env = os.environ.copy()
-    env["VIDEO_INPUTS"] = "\n".join(url for url, _ in suggested)
+    env["VIDEO_INPUTS"] = "\n".join(url for url, _ in recommended)
     proc = subprocess.run(["python", "scripts/download_videos.py"], env=env)
     return proc.returncode
 

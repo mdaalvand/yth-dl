@@ -51,7 +51,7 @@ File: `.github/workflows/search-youtube.yml`
 
 ## Workflow: Download Home Recommended Videos (20)
 
-File: `.github/workflows/download-youtube-suggested.yml`
+File: `.github/workflows/download-youtube-recommended.yml`
 
 ### Inputs
 
@@ -122,7 +122,7 @@ File: `.github/workflows/download-youtube-channel-latest.yml`
 5. The downloader picks the closest quality (`--format-sort res:<quality>`) instead of forcing one strict format ID.
 6. For `HTTP 429`, the downloader sleeps and retries with backoff (`15s`, `30s`, `45s`, `60s` by default).
 7. If subtitle requests keep getting 429 after retries, it retries the same video without subtitles so the whole workflow does not fail.
-8. Home recommendation selection is handled in `scripts/download_suggested_videos.py`.
+8. Home recommendation selection is handled in `scripts/download_recommended_videos.py`.
 9. Latest channel selection is handled in `scripts/download_channel_latest.py`.
 
 ## Bot Check / "Sign in to confirm you’re not a bot"

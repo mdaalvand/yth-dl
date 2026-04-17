@@ -49,22 +49,22 @@ permissions:
   contents: write
 
 jobs:
-  suggested_download:
+  recommended_download:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Setup Node.js (YouTube JS runtime)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install dependencies
         run: |
@@ -86,7 +86,7 @@ jobs:
             exit 1
           fi
 
-      - name: Download suggested videos
+      - name: Download recommended videos
         env:
           MAX_RESULTS: ${{ github.event.inputs.max_results }}
           QUALITY: ${{ github.event.inputs.quality }}
@@ -98,7 +98,7 @@ jobs:
           CONTINUE_ON_ERROR: "true"
         run: |
           set -euo pipefail
-          python scripts/download_suggested_videos.py
+          python scripts/download_recommended_videos.py
 
       - name: Build release notes
         id: notes
@@ -112,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          TAG="suggested-download-$(date -u +'%Y%m%d-%H%M%S')"
+          TAG="recommended-download-$(date -u +'%Y%m%d-%H%M%S')"
           {
             echo "# Home Recommended Download Results"
             echo
@@ -129,11 +129,11 @@ jobs:
             fi
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
-            echo "## Suggested List"
-            if [ -f suggested_videos.md ]; then
-              cat suggested_videos.md
+            echo "## Recommended List"
+            if [ -f recommended_videos.md ]; then
+              cat recommended_videos.md
             else
-              echo "- No suggested list generated."
+              echo "- No recommended list generated."
             fi
             echo
             echo "## Downloaded Files"
@@ -163,9 +163,9 @@ jobs:
           name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
           body_path: release_notes.md
           files: |
-            suggested_videos.txt
-            suggested_videos.json
-            suggested_videos.md
+            recommended_videos.txt
+            recommended_videos.json
+            recommended_videos.md
             downloads_failed.json
             downloads_failed.txt
             downloads/**
