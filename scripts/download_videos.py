@@ -130,7 +130,6 @@ def main() -> int:
     common_args = [
         "yt-dlp",
         "--no-playlist",
-        "--restrict-filenames",
         "--merge-output-format",
         "mp4",
         "--js-runtimes",
