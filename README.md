@@ -21,7 +21,8 @@ File: `.github/workflows/download-youtube.yml`
 2. `quality` (optional): max output quality (default: `480`)
 3. `embed_subtitles` (optional): embed subtitles into video (default: `true`)
 4. `embed_chapters` (optional): embed chapters into video (default: `true`)
-5. `release_name` (optional): custom release title
+5. `subtitle_langs` (optional): subtitle language filter for `yt-dlp --sub-langs` (default: `fa.*,en.*,fa,en`)
+6. `release_name` (optional): custom release title
 
 ## Workflow: Search Videos
 
@@ -58,7 +59,10 @@ File: `.github/workflows/search-youtube.yml`
 1. Both workflows use `yt-dlp`.
 2. `ffmpeg` is used for subtitle/chapter embedding.
 3. `node` is installed and passed as JS runtime for more reliable YouTube extraction.
-4. The download workflow prints available formats first, then selects the closest quality instead of forcing a single strict format.
+4. Download logic is handled in `scripts/download_videos.py` for cleaner retries and error handling.
+5. The downloader picks the closest quality (`--format-sort res:<quality>`) instead of forcing one strict format ID.
+6. For `HTTP 429`, the downloader sleeps and retries with backoff (`15s`, `30s`, `45s`, `60s` by default).
+7. If subtitle requests keep getting 429 after retries, it automatically retries the same video without subtitles so the whole workflow does not fail.
 
 ## Bot Check / "Sign in to confirm you’re not a bot"
 
@@ -73,8 +77,7 @@ If that happens, provide YouTube cookies through a repository secret:
 ## How to Obtain `cookies.txt` (Recommended)
 
 1. Sign in to YouTube in your browser.
-2. Install a trusted cookies export extension that can export in Netscape format. [EditThisCookie (V3)
-](https://chromewebstore.google.com/detail/editthiscookie-v3/ojfebgpkimhlhcblbalbfjblapadhbol)
+2. Install a trusted cookies export extension that can export in Netscape format (for example: `Get cookies.txt LOCALLY`).
 3. Open `youtube.com`.
 4. Export cookies for YouTube domains (`youtube.com`, `.youtube.com`, and often `.google.com`).
 5. Save/export as `cookies.txt`.

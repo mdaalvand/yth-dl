@@ -84,7 +84,8 @@ jobs:
             --no-playlist
             --dump-single-json
             --js-runtimes node
-            --extractor-args "youtube:player_client=web,android,ios,tv"
+            --extractor-args "youtube:player_client=web,tv"
+            --remote-components ejs:github
             --retries 10
             --retry-sleep 2
             --sleep-requests 1

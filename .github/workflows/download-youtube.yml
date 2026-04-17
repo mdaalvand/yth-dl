@@ -29,6 +29,11 @@ on:
         required: true
         default: true
         type: boolean
+      subtitle_langs:
+        description: "Subtitle languages for yt-dlp --sub-langs"
+        required: true
+        default: "fa.*,en.*,fa,en"
+        type: string
       release_name:
         description: "Optional release title"
         required: false
@@ -81,118 +86,19 @@ jobs:
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
           EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
-          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
+          MAX_429_RETRIES: "4"
+          RETRY_BASE_SLEEP_SECONDS: "15"
         run: |
           set -euo pipefail
-
-          mkdir -p downloads
-
-          INPUT_FILE="$(mktemp)"
-          printf '%s\n' "$VIDEO_INPUTS" \
-            | tr ',' '\n' \
-            | tr ' ' '\n' \
-            | sed '/^\s*$/d' > "$INPUT_FILE"
-
-          if [ ! -s "$INPUT_FILE" ]; then
-            echo "No valid video input found."
-            exit 1
-          fi
-
-          while IFS= read -r RAW_ITEM; do
-            ITEM="$(echo "$RAW_ITEM" | xargs)"
-            [ -z "$ITEM" ] && continue
-
-            if [[ "$ITEM" =~ ^https?:// ]]; then
-              URL="$ITEM"
-            else
-              URL="https://www.youtube.com/watch?v=$ITEM"
-            fi
-
-            echo "Downloading: $URL"
-
-            echo "Available formats for: $URL"
-            LIST_ARGS=(
-              --list-formats
-              --no-playlist
-              --js-runtimes node
-              --remote-components ejs:github
-              --extractor-args "youtube:player_client=web,android,ios,tv"
-            )
-
-            if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
-              LIST_ARGS+=(--cookies cookies.txt)
-            fi
-
-            yt-dlp "${LIST_ARGS[@]}" "$URL" || true
-
-            ARGS=(
-              --no-playlist
-              --restrict-filenames
-              --merge-output-format mp4
-              --js-runtimes node
-              --remote-components ejs:github
-              --extractor-args "youtube:player_client=web,android,ios,tv"
-              --retries 10
-              --fragment-retries 10
-              --retry-sleep 2
-              --sleep-requests 1
-              --sleep-interval 1
-              --max-sleep-interval 5
-              --format "bv*+ba/b"
-              --format-sort "res:${QUALITY}"
-              --paths downloads
-              --output "%(title).180B-%(id)s.%(ext)s"
-            )
-
-            if [ "$EMBED_SUBTITLES" = "true" ]; then
-              ARGS+=(--write-subs --write-auto-subs --sub-langs "all,-live_chat" --embed-subs)
-            fi
-
-            if [ "$EMBED_CHAPTERS" = "true" ]; then
-              ARGS+=(--add-metadata --embed-chapters)
-            fi
-
-            if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
-              ARGS+=(--cookies cookies.txt)
-            fi
-
-            yt-dlp "${ARGS[@]}" "$URL" || {
-              echo "Primary selection failed. Falling back to best available format..."
-              FALLBACK_ARGS=(
-                --no-playlist
-                --restrict-filenames
-                --merge-output-format mp4
-                --js-runtimes node
-                --remote-components ejs:github
-                --extractor-args "youtube:player_client=web,android,ios,tv"
-                --retries 10
-                --fragment-retries 10
-                --retry-sleep 2
-                --paths downloads
-                --output "%(title).180B-%(id)s.%(ext)s"
-              )
-
-              if [ "$EMBED_SUBTITLES" = "true" ]; then
-                FALLBACK_ARGS+=(--write-subs --write-auto-subs --sub-langs "all,-live_chat" --embed-subs)
-              fi
-
-              if [ "$EMBED_CHAPTERS" = "true" ]; then
-                FALLBACK_ARGS+=(--add-metadata --embed-chapters)
-              fi
-
-              if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
-                FALLBACK_ARGS+=(--cookies cookies.txt)
-              fi
-
-              yt-dlp "${FALLBACK_ARGS[@]}" "$URL"
-            }
-          done < "$INPUT_FILE"
+          python scripts/download_videos.py
 
       - name: Build release notes
         id: notes
         env:
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
           EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
@@ -204,6 +110,7 @@ jobs:
             echo
             echo "- Quality limit: ${QUALITY}p"
             echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
+            echo "- Subtitle langs: ${SUBTITLE_LANGS}"
             echo "- Chapters embedded: ${EMBED_CHAPTERS}"
             if [ -n "${YT_COOKIES:-}" ]; then
               echo "- Cookies provided: true"
