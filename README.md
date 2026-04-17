@@ -5,7 +5,7 @@ Automate YouTube download and YouTube search with GitHub Actions.
 ## Features
 
 1. Download workflow from YouTube URLs or video IDs
-2. Select output quality (default: `480p`)
+2. Select target quality (default: `480p`) and auto-pick the closest available stream
 3. Optional subtitle embedding (default: `true`)
 4. Optional chapter embedding (default: `true`)
 5. Upload downloaded files to GitHub Releases
@@ -58,6 +58,7 @@ File: `.github/workflows/search-youtube.yml`
 1. Both workflows use `yt-dlp`.
 2. `ffmpeg` is used for subtitle/chapter embedding.
 3. `node` is installed and passed as JS runtime for more reliable YouTube extraction.
+4. The download workflow prints available formats first, then selects the closest quality instead of forcing a single strict format.
 
 ## Bot Check / "Sign in to confirm you’re not a bot"
 

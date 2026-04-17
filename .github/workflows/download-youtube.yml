@@ -110,13 +110,27 @@ jobs:
 
             echo "Downloading: $URL"
 
-            FORMAT_SELECTOR="bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}][ext=mp4]/best[height<=${QUALITY}]"
+            echo "Available formats for: $URL"
+            LIST_ARGS=(
+              --list-formats
+              --no-playlist
+              --js-runtimes node
+              --remote-components ejs:github
+              --extractor-args "youtube:player_client=web,android,ios,tv"
+            )
+
+            if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
+              LIST_ARGS+=(--cookies cookies.txt)
+            fi
+
+            yt-dlp "${LIST_ARGS[@]}" "$URL" || true
 
             ARGS=(
               --no-playlist
               --restrict-filenames
               --merge-output-format mp4
               --js-runtimes node
+              --remote-components ejs:github
               --extractor-args "youtube:player_client=web,android,ios,tv"
               --retries 10
               --fragment-retries 10
@@ -124,7 +138,8 @@ jobs:
               --sleep-requests 1
               --sleep-interval 1
               --max-sleep-interval 5
-              --format "$FORMAT_SELECTOR"
+              --format "bv*+ba/b"
+              --format-sort "res:${QUALITY}"
               --paths downloads
               --output "%(title).180B-%(id)s.%(ext)s"
             )
@@ -141,7 +156,36 @@ jobs:
               ARGS+=(--cookies cookies.txt)
             fi
 
-            yt-dlp "${ARGS[@]}" "$URL"
+            yt-dlp "${ARGS[@]}" "$URL" || {
+              echo "Primary selection failed. Falling back to best available format..."
+              FALLBACK_ARGS=(
+                --no-playlist
+                --restrict-filenames
+                --merge-output-format mp4
+                --js-runtimes node
+                --remote-components ejs:github
+                --extractor-args "youtube:player_client=web,android,ios,tv"
+                --retries 10
+                --fragment-retries 10
+                --retry-sleep 2
+                --paths downloads
+                --output "%(title).180B-%(id)s.%(ext)s"
+              )
+
+              if [ "$EMBED_SUBTITLES" = "true" ]; then
+                FALLBACK_ARGS+=(--write-subs --write-auto-subs --sub-langs "all,-live_chat" --embed-subs)
+              fi
+
+              if [ "$EMBED_CHAPTERS" = "true" ]; then
+                FALLBACK_ARGS+=(--add-metadata --embed-chapters)
+              fi
+
+              if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
+                FALLBACK_ARGS+=(--cookies cookies.txt)
+              fi
+
+              yt-dlp "${FALLBACK_ARGS[@]}" "$URL"
+            }
           done < "$INPUT_FILE"
 
       - name: Build release notes
