@@ -10,7 +10,8 @@ Automate YouTube download and YouTube search with GitHub Actions.
 4. Optional chapter embedding (default: `true`)
 5. Upload downloaded files to GitHub Releases
 6. Separate search workflow that publishes rich result details in a Release
-7. New workflow to download up to 20 suggested videos from a source video
+7. Home recommendations workflow (personalized using your YouTube cookies)
+8. Local command/script to download latest videos from a channel
 
 ## Workflow: Download Videos
 
@@ -36,26 +37,6 @@ File: `.github/workflows/search-youtube.yml`
 3. `sort_by` (optional): how to sort results in release notes
 4. `release_name` (optional): custom release title
 
-## Workflow: Download Suggested Videos (20)
-
-File: `.github/workflows/download-youtube-suggested.yml`
-
-### Inputs
-
-1. `source_video` (required): source YouTube URL or video ID
-2. `max_results` (optional): number of suggested videos (default: `20`)
-3. `quality` (optional): target quality (default: `480`)
-4. `embed_subtitles` (optional): embed subtitles into videos (default: `true`)
-5. `embed_chapters` (optional): embed chapters into videos (default: `true`)
-6. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
-7. `release_name` (optional): custom release title
-
-### How It Picks Suggestions
-
-1. Tries YouTube related videos from the source video metadata first.
-2. If not enough related videos are found, it fills the rest with a fallback search based on source title/channel.
-3. Then it downloads the selected list (up to requested count).
-
 ### Search Output in Release Notes
 
 1. Video title
@@ -68,23 +49,67 @@ File: `.github/workflows/download-youtube-suggested.yml`
 8. Direct video URL
 9. Summary stats (total and average views)
 
+## Workflow: Download Home Recommended Videos (20)
+
+File: `.github/workflows/download-youtube-suggested.yml`
+
+### Inputs
+
+1. `max_results` (optional): number of recommended videos (default: `20`)
+2. `quality` (optional): target quality (default: `480`)
+3. `embed_subtitles` (optional): embed subtitles into videos (default: `true`)
+4. `embed_chapters` (optional): embed chapters into videos (default: `true`)
+5. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
+6. `release_name` (optional): custom release title
+
+### Important
+
+1. This workflow reads your personalized recommendations from `https://www.youtube.com/feed/recommended`.
+2. `YT_COOKIES` secret is required. Without cookies, personalized home feed cannot be fetched.
+
+## Local Command: Download Latest Channel Videos
+
+Script: `scripts/download_channel_latest.py`
+
+Example:
+
+```bash
+cd /path/to/youtube-workflow-hub
+CHANNEL_INPUT="https://www.youtube.com/@MrBeast" \
+CHANNEL_COUNT="5" \
+QUALITY="480" \
+EMBED_SUBTITLES="true" \
+EMBED_CHAPTERS="true" \
+SUBTITLE_LANGS="fa.*,en.*,fa,en" \
+python scripts/download_channel_latest.py
+```
+
+You can also use a handle directly:
+
+```bash
+CHANNEL_INPUT="@MrBeast" CHANNEL_COUNT="3" python scripts/download_channel_latest.py
+```
+
+`CHANNEL_INPUT` supports channel URLs and `@handle`. The script resolves `/videos` automatically.
+
 ## Quick Start
 
 1. Push this project to your GitHub repository.
 2. Open the `Actions` tab.
-3. Run either workflow using `Run workflow`.
+3. Run a workflow using `Run workflow`.
 4. Check output files and notes in the `Releases` section.
 
 ## Technical Notes
 
-1. Both workflows use `yt-dlp`.
+1. All download/search flows use `yt-dlp`.
 2. `ffmpeg` is used for subtitle/chapter embedding.
 3. `node` is installed and passed as JS runtime for more reliable YouTube extraction.
 4. Download logic is handled in `scripts/download_videos.py` for cleaner retries and error handling.
 5. The downloader picks the closest quality (`--format-sort res:<quality>`) instead of forcing one strict format ID.
 6. For `HTTP 429`, the downloader sleeps and retries with backoff (`15s`, `30s`, `45s`, `60s` by default).
-7. If subtitle requests keep getting 429 after retries, it automatically retries the same video without subtitles so the whole workflow does not fail.
-8. Suggested-video download logic is handled in `scripts/download_suggested_videos.py`.
+7. If subtitle requests keep getting 429 after retries, it retries the same video without subtitles so the whole workflow does not fail.
+8. Home recommendation selection is handled in `scripts/download_suggested_videos.py`.
+9. Latest channel selection is handled in `scripts/download_channel_latest.py`.
 
 ## Bot Check / "Sign in to confirm you’re not a bot"
 

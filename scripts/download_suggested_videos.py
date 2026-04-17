@@ -7,18 +7,6 @@ import sys
 from typing import Dict, List, Tuple
 
 
-def normalize_url(raw: str) -> str:
-    raw = (raw or "").strip()
-    if raw.startswith("http://") or raw.startswith("https://"):
-        return raw
-    return f"https://www.youtube.com/watch?v={raw}"
-
-
-def extract_video_id(url: str) -> str:
-    m = re.search(r"(?:v=|/shorts/|youtu\.be/)([A-Za-z0-9_-]{11})", url)
-    return m.group(1) if m else ""
-
-
 def run_json(cmd: List[str]) -> Dict:
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -48,13 +36,28 @@ def metadata_args(cookies_exists: bool) -> List[str]:
     return args
 
 
-def collect_related(source_info: Dict, source_id: str, max_results: int) -> List[Tuple[str, Dict]]:
-    related_items = source_info.get("related_videos") or []
+def extract_video_id(text: str) -> str:
+    if not text:
+        return ""
+    m = re.search(r"(?:v=|/shorts/|youtu\.be/)([A-Za-z0-9_-]{11})", text)
+    if m:
+        return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", text):
+        return text
+    return ""
+
+
+def collect_home_recommendations(home_json: Dict, max_results: int) -> List[Tuple[str, Dict]]:
+    entries = home_json.get("entries") or []
     out: List[Tuple[str, Dict]] = []
     seen = set()
-    for item in related_items:
-        vid = item.get("id") or extract_video_id(item.get("url", ""))
-        if not vid or vid == source_id or vid in seen:
+    for item in entries:
+        vid = (
+            item.get("id")
+            or extract_video_id(item.get("url", ""))
+            or extract_video_id(item.get("webpage_url", ""))
+        )
+        if not vid or vid in seen:
             continue
         seen.add(vid)
         out.append((f"https://www.youtube.com/watch?v={vid}", item))
@@ -63,57 +66,26 @@ def collect_related(source_info: Dict, source_id: str, max_results: int) -> List
     return out
 
 
-def fallback_search(
-    source_info: Dict, source_id: str, max_results: int, existing: List[Tuple[str, Dict]], cookies_exists: bool
-) -> List[Tuple[str, Dict]]:
-    needed = max_results - len(existing)
-    if needed <= 0:
-        return existing
-
-    title = source_info.get("title") or ""
-    uploader = source_info.get("uploader") or source_info.get("channel") or ""
-    query = f"{title} {uploader}".strip() or source_id
-
-    search_cmd = metadata_args(cookies_exists) + [f"ytsearch{needed * 2}:{query}"]
-    search_json = run_json(search_cmd)
-    entries = search_json.get("entries") or []
-
-    seen_ids = {extract_video_id(url) for url, _ in existing}
-    seen_ids.add(source_id)
-
-    for item in entries:
-        vid = item.get("id") or extract_video_id(item.get("url", ""))
-        if not vid or vid in seen_ids:
-            continue
-        seen_ids.add(vid)
-        existing.append((f"https://www.youtube.com/watch?v={vid}", item))
-        if len(existing) >= max_results:
-            break
-
-    return existing
-
-
 def main() -> int:
-    source_input = os.getenv("SOURCE_VIDEO", "").strip()
     max_results = int((os.getenv("MAX_RESULTS", "20") or "20").strip())
-    if not source_input:
-        print("SOURCE_VIDEO is required.")
+    cookies_exists = os.path.isfile("cookies.txt")
+    if not cookies_exists:
+        print("cookies.txt is required for personalized home recommendations.")
+        print("Set repository secret YT_COOKIES and rerun.")
         return 1
 
-    source_url = normalize_url(source_input)
-    source_id = extract_video_id(source_url)
-    cookies_exists = os.path.isfile("cookies.txt")
-
-    print(f"Source video: {source_url}")
-    source_info = run_json(metadata_args(cookies_exists) + [source_url])
-
-    suggested = collect_related(source_info, source_id, max_results)
-    if len(suggested) < max_results:
-        suggested = fallback_search(source_info, source_id, max_results, suggested, cookies_exists)
-
-    suggested = suggested[:max_results]
+    home_url = "https://www.youtube.com/feed/recommended"
+    print(f"Reading personalized home feed: {home_url}")
+    home_cmd = metadata_args(cookies_exists) + [
+        "--flat-playlist",
+        "--playlist-end",
+        str(max_results * 4),
+        home_url,
+    ]
+    home_json = run_json(home_cmd)
+    suggested = collect_home_recommendations(home_json, max_results)
     if not suggested:
-        print("No suggested videos found.")
+        print("No recommended videos found in home feed.")
         return 1
 
     os.makedirs("downloads", exist_ok=True)
@@ -124,7 +96,7 @@ def main() -> int:
     with open("suggested_videos.json", "w", encoding="utf-8") as f:
         json.dump(
             {
-                "source_video": source_url,
+                "source": home_url,
                 "count": len(suggested),
                 "suggested": [
                     {
@@ -144,8 +116,8 @@ def main() -> int:
         )
 
     with open("suggested_videos.md", "w", encoding="utf-8") as f:
-        f.write("# Suggested Videos\n\n")
-        f.write(f"- Source: {source_url}\n")
+        f.write("# Home Recommended Videos\n\n")
+        f.write(f"- Source: {home_url}\n")
         f.write(f"- Selected: {len(suggested)}\n\n")
         for idx, (url, item) in enumerate(suggested, start=1):
             title = item.get("title") or "N/A"
@@ -161,4 +133,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

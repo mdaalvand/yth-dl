@@ -1,16 +1,12 @@
-name: Download Suggested YouTube Videos
+name: Download Home Recommended YouTube Videos
 
 on:
   workflow_dispatch:
     inputs:
-      source_video:
-        description: "Source YouTube URL or video ID"
-        required: true
-        type: string
       max_results:
-        description: "How many suggested videos to download"
+        description: "How many home-recommended videos to download"
         required: true
-        default: "10"
+        default: "20"
         type: choice
         options:
           - "10"
@@ -86,12 +82,12 @@ jobs:
             printf '%s\n' "$YT_COOKIES" > cookies.txt
             echo "Cookies file detected and prepared."
           else
-            echo "No cookies secret provided; continuing without cookies."
+            echo "YT_COOKIES is required for personalized home recommendations."
+            exit 1
           fi
 
       - name: Download suggested videos
         env:
-          SOURCE_VIDEO: ${{ github.event.inputs.source_video }}
           MAX_RESULTS: ${{ github.event.inputs.max_results }}
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
@@ -106,7 +102,6 @@ jobs:
       - name: Build release notes
         id: notes
         env:
-          SOURCE_VIDEO: ${{ github.event.inputs.source_video }}
           MAX_RESULTS: ${{ github.event.inputs.max_results }}
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
@@ -118,10 +113,10 @@ jobs:
 
           TAG="suggested-download-$(date -u +'%Y%m%d-%H%M%S')"
           {
-            echo "# Suggested YouTube Download Results"
+            echo "# Home Recommended Download Results"
             echo
-            echo "- Source video: ${SOURCE_VIDEO}"
-            echo "- Requested suggestions: ${MAX_RESULTS}"
+            echo "- Source: https://www.youtube.com/feed/recommended (personalized by your cookies)"
+            echo "- Requested recommendations: ${MAX_RESULTS}"
             echo "- Quality target: ${QUALITY}p"
             echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
             echo "- Subtitle langs: ${SUBTITLE_LANGS}"
@@ -165,4 +160,3 @@ jobs:
             suggested_videos.json
             suggested_videos.md
             downloads/**
-
