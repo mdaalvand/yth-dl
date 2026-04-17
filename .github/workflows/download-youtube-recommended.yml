@@ -138,12 +138,15 @@ jobs:
               echo "- No recommended list generated."
             fi
             echo
+            release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
             echo "## Downloaded Files"
             if compgen -G "downloads/*.mp4" > /dev/null; then
               for file in downloads/*.mp4; do
                 size="$(du -h "$file" | cut -f1)"
                 name="$(basename "$file")"
+                encoded_name="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
                 echo "- ${name} (${size})"
+                echo "  Download: ${release_base}/${encoded_name}"
               done
             else
               echo "- No video files were produced."

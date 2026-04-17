@@ -95,16 +95,66 @@ def run_with_429_retry(
     return last
 
 
+def extract_video_id_from_url(url: str) -> str:
+    m = re.search(r"(?:v=|/shorts/|youtu\.be/)([A-Za-z0-9_-]{11})", url)
+    return m.group(1) if m else "unknown"
+
+
+def safe_unicode_filename_part(text: str) -> str:
+    s = (text or "").strip()
+    if not s:
+        return "video"
+    s = s.replace("/", " ").replace("\\", " ")
+    s = re.sub(r"[\x00-\x1f\x7f]", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = s.rstrip(". ")
+    return s or "video"
+
+
+def read_title_from_mp4_metadata(path: Path) -> str:
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format_tags=title",
+                "-of",
+                "default=nk=1:nw=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if proc.returncode == 0:
+            title = (proc.stdout or "").strip()
+            if title:
+                return title
+    except Exception:
+        pass
+    return ""
+
+
 def prefix_new_videos(download_dir: str, index: int, before_paths: List[Path]) -> None:
     before_set = {p.name for p in before_paths}
     after_paths = sorted(Path(download_dir).glob("*.mp4"))
     new_paths = [p for p in after_paths if p.name not in before_set]
     for p in new_paths:
-        if re.match(r"^\d{2,3}-", p.name):
-            continue
-        target = p.with_name(f"{index:02d}-{p.name}")
+        title = read_title_from_mp4_metadata(p)
+        video_id_match = re.search(r"-([A-Za-z0-9_-]{11})\.mp4$", p.name)
+        video_id = video_id_match.group(1) if video_id_match else "unknown"
+        base = f"{index:02d}-{safe_unicode_filename_part(title)}-{video_id}.mp4"
+        target = p.with_name(base)
         if target.exists():
-            continue
+            i = 2
+            while True:
+                candidate = p.with_name(f"{index:02d}-{safe_unicode_filename_part(title)}-{video_id}-{i}.mp4")
+                if not candidate.exists():
+                    target = candidate
+                    break
+                i += 1
         p.rename(target)
 
 
@@ -179,6 +229,7 @@ def main() -> int:
     for idx, url in enumerate(urls, start=1):
         print(f"\n=== ({idx}/{len(urls)}) Downloading: {url}")
         mp4_before = sorted(Path("downloads").glob("*.mp4"))
+        video_id = extract_video_id_from_url(url)
 
         full_cmd = common_args + chapter_args + subtitle_args + [url]
         result = run_with_429_retry(full_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds)
@@ -210,7 +261,7 @@ def main() -> int:
             if line.startswith("ERROR:"):
                 short_reason = line
                 break
-        failures.append({"url": url, "reason": short_reason})
+        failures.append({"url": url, "video_id": video_id, "reason": short_reason})
         if not continue_on_error:
             return 1
         print("Skipping failed video and continuing with next item...")
