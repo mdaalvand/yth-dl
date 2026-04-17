@@ -1,60 +1,88 @@
 # YouTube Workflow Hub
 
-پروژه برای اجرای دانلود و سرچ یوتیوب با **GitHub Actions**.
+Automate YouTube download and YouTube search with GitHub Actions.
 
-## قابلیت‌ها
+## Features
 
-1. Workflow دانلود ویدیو از روی لینک یا Video ID
-2. انتخاب کیفیت خروجی (پیش‌فرض: `480p`)
-3. گزینه‌ی اضافه کردن زیرنویس به ویدیو (پیش‌فرض: `true`)
-4. گزینه‌ی اضافه کردن Chapter به ویدیو (پیش‌فرض: `true`)
-5. آپلود خروجی‌ها داخل GitHub Release
-6. Workflow جدا برای سرچ یوتیوب و انتشار نتایج کامل در Release
+1. Download workflow from YouTube URLs or video IDs
+2. Select output quality (default: `480p`)
+3. Optional subtitle embedding (default: `true`)
+4. Optional chapter embedding (default: `true`)
+5. Upload downloaded files to GitHub Releases
+6. Separate search workflow that publishes rich result details in a Release
 
-## Workflow دانلود
+## Workflow: Download Videos
 
-فایل: `.github/workflows/download-youtube.yml`
+File: `.github/workflows/download-youtube.yml`
 
-### ورودی‌ها
+### Inputs
 
-1. `video_inputs` (اجباری): لینک یا آیدی ویدیو (چندتایی با فاصله، کاما یا خط جدید)
-2. `quality` (اختیاری): کیفیت حداکثر خروجی (`480` پیش‌فرض)
-3. `embed_subtitles` (اختیاری): اضافه کردن زیرنویس (`true` پیش‌فرض)
-4. `embed_chapters` (اختیاری): اضافه کردن چپتر (`true` پیش‌فرض)
-5. `release_name` (اختیاری): عنوان دلخواه ریلیز
+1. `video_inputs` (required): one or more YouTube URLs or video IDs (comma, space, or newline separated)
+2. `quality` (optional): max output quality (default: `480`)
+3. `embed_subtitles` (optional): embed subtitles into video (default: `true`)
+4. `embed_chapters` (optional): embed chapters into video (default: `true`)
+5. `release_name` (optional): custom release title
 
-## Workflow سرچ
+## Workflow: Search Videos
 
-فایل: `.github/workflows/search-youtube.yml`
+File: `.github/workflows/search-youtube.yml`
 
-### ورودی‌ها
+### Inputs
 
-1. `query` (اجباری): متن سرچ
-2. `max_results` (اختیاری): تعداد نتایج (`10` پیش‌فرض)
-3. `sort_by` (اختیاری): ترتیب نمایش در ریلیز
-4. `release_name` (اختیاری): عنوان دلخواه ریلیز
+1. `query` (required): search keyword(s)
+2. `max_results` (optional): number of results (default: `10`)
+3. `sort_by` (optional): how to sort results in release notes
+4. `release_name` (optional): custom release title
 
-### جزئیات خروجی سرچ در Release
+### Search Output in Release Notes
 
-1. عنوان ویدیو
-2. نام کانال و Channel ID
-3. مدت زمان
-4. تعداد بازدید
-5. تعداد لایک (اگر یوتیوب/yt-dlp داده باشد)
-6. تاریخ انتشار
-7. وضعیت Live
-8. لینک مستقیم ویدیو
-9. خلاصه آماری (مجموع و میانگین ویو)
+1. Video title
+2. Channel name and channel ID
+3. Duration
+4. View count
+5. Like count (if provided by YouTube/yt-dlp)
+6. Upload date
+7. Live status
+8. Direct video URL
+9. Summary stats (total and average views)
 
-## اجرای سریع
+## Quick Start
 
-1. پروژه را داخل GitHub بساز یا این پوشه را Push کن.
-2. وارد تب `Actions` شو.
-3. یکی از دو Workflow را با `Run workflow` اجرا کن.
-4. خروجی را داخل بخش `Releases` ببین.
+1. Push this project to your GitHub repository.
+2. Open the `Actions` tab.
+3. Run either workflow using `Run workflow`.
+4. Check output files and notes in the `Releases` section.
 
-## نکته فنی
+## Technical Notes
 
-1. دانلود و سرچ با `yt-dlp` انجام می‌شود.
-2. برای Embed کردن Subtitles/Chapters از `ffmpeg` در runner استفاده می‌شود.
+1. Both workflows use `yt-dlp`.
+2. `ffmpeg` is used for subtitle/chapter embedding.
+3. `node` is installed and passed as JS runtime for more reliable YouTube extraction.
 
+## Bot Check / "Sign in to confirm you’re not a bot"
+
+On GitHub-hosted runners, YouTube may block anonymous requests for some videos/queries.  
+If that happens, provide YouTube cookies through a repository secret:
+
+1. Go to `Repository Settings > Secrets and variables > Actions`.
+2. Create a new secret named `YT_COOKIES`.
+3. Paste your full `cookies.txt` content (Netscape format) as the secret value.
+4. Re-run the workflow.
+
+## How to Obtain `cookies.txt` (Recommended)
+
+1. Sign in to YouTube in your browser.
+2. Install a trusted cookies export extension that can export in Netscape format. [EditThisCookie (V3)
+](https://chromewebstore.google.com/detail/editthiscookie-v3/ojfebgpkimhlhcblbalbfjblapadhbol)
+3. Open `youtube.com`.
+4. Export cookies for YouTube domains (`youtube.com`, `.youtube.com`, and often `.google.com`).
+5. Save/export as `cookies.txt`.
+6. Open the file, copy all content, and put it into the `YT_COOKIES` GitHub secret.
+
+## Security Best Practices for Cookies
+
+1. Treat `cookies.txt` like a password.
+2. Never commit cookies to git.
+3. Store cookies only in GitHub Secrets (`YT_COOKIES`).
+4. Rotate/re-export cookies if they stop working or if you suspect leakage.
+5. Use a dedicated Google account for automation if possible.

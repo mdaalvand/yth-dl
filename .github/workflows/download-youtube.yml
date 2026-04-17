@@ -51,6 +51,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Setup Node.js (YouTube JS runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -58,12 +63,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg jq
 
+      - name: Prepare optional cookies
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: |
+          set -euo pipefail
+          if [ -n "${YT_COOKIES:-}" ]; then
+            printf '%s\n' "$YT_COOKIES" > cookies.txt
+            echo "Cookies file detected and prepared."
+          else
+            echo "No cookies secret provided; continuing without cookies."
+          fi
+
       - name: Download videos
         env:
           VIDEO_INPUTS: ${{ github.event.inputs.video_inputs }}
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
           EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           set -euo pipefail
 
@@ -98,6 +116,14 @@ jobs:
               --no-playlist
               --restrict-filenames
               --merge-output-format mp4
+              --js-runtimes node
+              --extractor-args "youtube:player_client=web,android,ios,tv"
+              --retries 10
+              --fragment-retries 10
+              --retry-sleep 2
+              --sleep-requests 1
+              --sleep-interval 1
+              --max-sleep-interval 5
               --format "$FORMAT_SELECTOR"
               --paths downloads
               --output "%(title).180B-%(id)s.%(ext)s"
@@ -111,6 +137,10 @@ jobs:
               ARGS+=(--add-metadata --embed-chapters)
             fi
 
+            if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
+              ARGS+=(--cookies cookies.txt)
+            fi
+
             yt-dlp "${ARGS[@]}" "$URL"
           done < "$INPUT_FILE"
 
@@ -120,6 +150,7 @@ jobs:
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
           EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           set -euo pipefail
 
@@ -130,6 +161,11 @@ jobs:
             echo "- Quality limit: ${QUALITY}p"
             echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
             echo "- Chapters embedded: ${EMBED_CHAPTERS}"
+            if [ -n "${YT_COOKIES:-}" ]; then
+              echo "- Cookies provided: true"
+            else
+              echo "- Cookies provided: false"
+            fi
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
             echo "## Output Files"
@@ -154,4 +190,3 @@ jobs:
           body_path: release_notes.md
           files: |
             downloads/**
-

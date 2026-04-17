@@ -50,22 +50,51 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Setup Node.js (YouTube JS runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install yt-dlp
 
+      - name: Prepare optional cookies
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: |
+          set -euo pipefail
+          if [ -n "${YT_COOKIES:-}" ]; then
+            printf '%s\n' "$YT_COOKIES" > cookies.txt
+            echo "Cookies file detected and prepared."
+          else
+            echo "No cookies secret provided; continuing without cookies."
+          fi
+
       - name: Search videos
         env:
           QUERY: ${{ github.event.inputs.query }}
           MAX_RESULTS: ${{ github.event.inputs.max_results }}
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           set -euo pipefail
-          yt-dlp \
-            --skip-download \
-            --no-playlist \
-            --dump-single-json \
-            "ytsearch${MAX_RESULTS}:${QUERY}" > search_raw.json
+          ARGS=(
+            --skip-download
+            --no-playlist
+            --dump-single-json
+            --js-runtimes node
+            --extractor-args "youtube:player_client=web,android,ios,tv"
+            --retries 10
+            --retry-sleep 2
+            --sleep-requests 1
+          )
+
+          if [ -n "${YT_COOKIES:-}" ] && [ -f cookies.txt ]; then
+            ARGS+=(--cookies cookies.txt)
+          fi
+
+          yt-dlp "${ARGS[@]}" "ytsearch${MAX_RESULTS}:${QUERY}" > search_raw.json
 
       - name: Build release notes and machine-readable output
         env:
@@ -91,4 +120,3 @@ jobs:
           files: |
             search_results.json
             search_raw.json
-
