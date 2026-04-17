@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import json
+from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict
 
@@ -94,6 +95,19 @@ def run_with_429_retry(
     return last
 
 
+def prefix_new_videos(download_dir: str, index: int, before_paths: List[Path]) -> None:
+    before_set = {p.name for p in before_paths}
+    after_paths = sorted(Path(download_dir).glob("*.mp4"))
+    new_paths = [p for p in after_paths if p.name not in before_set]
+    for p in new_paths:
+        if re.match(r"^\d{2,3}-", p.name):
+            continue
+        target = p.with_name(f"{index:02d}-{p.name}")
+        if target.exists():
+            continue
+        p.rename(target)
+
+
 def main() -> int:
     video_inputs = os.getenv("VIDEO_INPUTS", "")
     quality = os.getenv("QUALITY", "480").strip()
@@ -165,11 +179,13 @@ def main() -> int:
 
     for idx, url in enumerate(urls, start=1):
         print(f"\n=== ({idx}/{len(urls)}) Downloading: {url}")
+        mp4_before = sorted(Path("downloads").glob("*.mp4"))
 
         full_cmd = common_args + chapter_args + subtitle_args + [url]
         result = run_with_429_retry(full_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds)
 
         if result.ok:
+            prefix_new_videos("downloads", idx, mp4_before)
             success_count += 1
             continue
 
@@ -182,6 +198,7 @@ def main() -> int:
                 no_sub_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds
             )
             if no_sub_result.ok:
+                prefix_new_videos("downloads", idx, mp4_before)
                 print("Downloaded successfully without subtitles due to subtitle 429 limits.")
                 success_count += 1
                 continue
