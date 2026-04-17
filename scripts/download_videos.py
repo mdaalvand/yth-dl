@@ -16,6 +16,7 @@ class RunResult:
     output: str
     saw_429: bool
     subtitle_429: bool
+    timed_out: bool
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -36,10 +37,22 @@ def parse_video_inputs(raw: str) -> List[str]:
     return urls
 
 
-def run_command(args: List[str]) -> RunResult:
+def run_command(args: List[str], command_timeout_seconds: int) -> RunResult:
     print(f"\n$ {' '.join(shlex.quote(x) for x in args)}")
-    proc = subprocess.run(args, capture_output=True, text=True)
-    output = f"{proc.stdout}\n{proc.stderr}".strip()
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=command_timeout_seconds)
+        output = f"{proc.stdout}\n{proc.stderr}".strip()
+        timed_out = False
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        stderr = exc.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        output = f"{stdout}\n{stderr}\nERROR: command timed out after {command_timeout_seconds}s".strip()
+        timed_out = True
+
     if output:
         print(output)
 
@@ -47,24 +60,35 @@ def run_command(args: List[str]) -> RunResult:
     subtitle_429 = saw_429 and (
         "Unable to download video subtitles" in output or "Downloading subtitles" in output
     )
-    return RunResult(ok=proc.returncode == 0, output=output, saw_429=saw_429, subtitle_429=subtitle_429)
+    return RunResult(
+        ok=(not timed_out) and proc.returncode == 0 if not timed_out else False,
+        output=output,
+        saw_429=saw_429,
+        subtitle_429=subtitle_429,
+        timed_out=timed_out,
+    )
 
 
-def run_with_429_retry(args: List[str], max_attempts: int, base_sleep: int) -> RunResult:
-    last = RunResult(ok=False, output="", saw_429=False, subtitle_429=False)
+def run_with_429_retry(
+    args: List[str], max_attempts: int, base_sleep: int, command_timeout_seconds: int
+) -> RunResult:
+    last = RunResult(ok=False, output="", saw_429=False, subtitle_429=False, timed_out=False)
     for attempt in range(1, max_attempts + 1):
         print(f"\nAttempt {attempt}/{max_attempts}")
-        result = run_command(args)
+        result = run_command(args, command_timeout_seconds)
         if result.ok:
             return result
 
         last = result
-        if not result.saw_429:
+        if not result.saw_429 and not result.timed_out:
             return result
 
         if attempt < max_attempts:
             sleep_seconds = min(base_sleep * attempt, 180)
-            print(f"429 detected. Sleeping {sleep_seconds}s before retry...")
+            if result.timed_out:
+                print(f"Timeout detected. Sleeping {sleep_seconds}s before retry...")
+            else:
+                print(f"429 detected. Sleeping {sleep_seconds}s before retry...")
             time.sleep(sleep_seconds)
 
     return last
@@ -78,6 +102,7 @@ def main() -> int:
     subtitle_langs = os.getenv("SUBTITLE_LANGS", "fa.*,en.*,fa,en").strip()
     max_429_retries = int(os.getenv("MAX_429_RETRIES", "4").strip() or "4")
     retry_base_sleep = int(os.getenv("RETRY_BASE_SLEEP_SECONDS", "15").strip() or "15")
+    command_timeout_seconds = int(os.getenv("PER_VIDEO_TIMEOUT_SECONDS", "900").strip() or "900")
     continue_on_error = env_bool("CONTINUE_ON_ERROR", True)
 
     urls = parse_video_inputs(video_inputs)
@@ -142,7 +167,7 @@ def main() -> int:
         print(f"\n=== ({idx}/{len(urls)}) Downloading: {url}")
 
         full_cmd = common_args + chapter_args + subtitle_args + [url]
-        result = run_with_429_retry(full_cmd, max_429_retries, retry_base_sleep)
+        result = run_with_429_retry(full_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds)
 
         if result.ok:
             success_count += 1
@@ -153,7 +178,9 @@ def main() -> int:
         if embed_subtitles and result.subtitle_429:
             print("\nSubtitle download kept hitting 429. Retrying without subtitles...")
             no_sub_cmd = common_args + chapter_args + [url]
-            no_sub_result = run_with_429_retry(no_sub_cmd, max_429_retries, retry_base_sleep)
+            no_sub_result = run_with_429_retry(
+                no_sub_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds
+            )
             if no_sub_result.ok:
                 print("Downloaded successfully without subtitles due to subtitle 429 limits.")
                 success_count += 1
