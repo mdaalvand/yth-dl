@@ -165,13 +165,13 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Remove empty files before release upload
+        shell: bash
         run: |
-          set -euo pipefail
-          [ -d downloads ] && find downloads -type f -size 0 -delete || true
-          for f in \
-            release_notes.md; do
-            [ -f "$f" ] && [ ! -s "$f" ] && rm -f "$f"
-          done
+          set -e
+          if [ -d downloads ]; then
+            find downloads -type f -size 0 -delete || true
+          fi
+          true
 
       - name: Create release
         uses: softprops/action-gh-release@v3
