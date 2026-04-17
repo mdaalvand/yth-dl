@@ -149,7 +149,7 @@ def prefix_new_videos(download_dir: str, index: int, before_paths: List[Path], p
     for p in new_paths:
         title = preferred_title
         if not title:
-            title = p.stem
+            title = "video"
         base = f"{index:02d}-{safe_unicode_filename_part(title)}-{video_id}.mp4"
         target = p.with_name(base)
         if target.exists():

@@ -122,18 +122,6 @@ jobs:
             fi
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
-            release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-            echo "## Downloaded Files"
-            if compgen -G "downloads/*.mp4" > /dev/null; then
-              for file in downloads/*.mp4; do
-                size="$(du -h "$file" | cut -f1)"
-                name="$(basename "$file")"
-                encoded_name="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
-                echo "- [${name}](${release_base}/${encoded_name}) (${size})"
-              done
-            else
-              echo "- No video files were produced."
-            fi
             if [ -f downloads_failed.json ]; then
               failed_count="$(jq -r '.failed_count // 0' downloads_failed.json)"
               echo
@@ -154,6 +142,7 @@ jobs:
           true
 
       - name: Create release
+        id: create_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
@@ -162,3 +151,45 @@ jobs:
           files: |
             downloads/*.mp4
           fail_on_unmatched_files: false
+
+      - name: Finalize release notes from actual assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.notes.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["TAG"]
+          token = os.environ["GH_TOKEN"]
+
+          def api(path: str, method: str = "GET", data: dict | None = None):
+            url = f"https://api.github.com{path}"
+            body = None if data is None else json.dumps(data).encode("utf-8")
+            req = urllib.request.Request(url, data=body, method=method)
+            req.add_header("Authorization", f"Bearer {token}")
+            req.add_header("Accept", "application/vnd.github+json")
+            req.add_header("X-GitHub-Api-Version", "2022-11-28")
+            if body is not None:
+              req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+              return json.loads(resp.read().decode("utf-8"))
+
+          release = api(f"/repos/{repo}/releases/tags/{tag}")
+          assets = [a for a in release.get("assets", []) if a.get("name", "").lower().endswith(".mp4")]
+          assets.sort(key=lambda a: a.get("name", ""))
+
+          body = release.get("body", "").rstrip() + "\n\n## Downloaded Files\n"
+          if assets:
+            for a in assets:
+              size_mb = int(a.get("size", 0)) / (1024 * 1024)
+              body += f"- [{a['name']}]({a['browser_download_url']}) ({size_mb:.1f} MB)\n"
+          else:
+            body += "- No video files were produced.\n"
+
+          api(f"/repos/{repo}/releases/{release['id']}", method="PATCH", data={"body": body})
+          PY
