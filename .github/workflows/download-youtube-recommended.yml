@@ -51,6 +51,7 @@ permissions:
 jobs:
   recommended_download:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
@@ -95,6 +96,7 @@ jobs:
           SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
           MAX_429_RETRIES: "4"
           RETRY_BASE_SLEEP_SECONDS: "15"
+          PER_VIDEO_TIMEOUT_SECONDS: "900"
           CONTINUE_ON_ERROR: "true"
         run: |
           set -euo pipefail
@@ -156,8 +158,22 @@ jobs:
 
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Remove empty files before release upload
+        run: |
+          set -euo pipefail
+          [ -d downloads ] && find downloads -type f -size 0 -delete || true
+          for f in \
+            recommended_videos.txt \
+            recommended_videos.json \
+            recommended_videos.md \
+            downloads_failed.json \
+            downloads_failed.txt \
+            release_notes.md; do
+            [ -f "$f" ] && [ ! -s "$f" ] && rm -f "$f"
+          done
+
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
           name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
@@ -169,3 +185,4 @@ jobs:
             downloads_failed.json
             downloads_failed.txt
             downloads/**
+          fail_on_unmatched_files: false

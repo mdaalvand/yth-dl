@@ -124,6 +124,8 @@ File: `.github/workflows/download-youtube-channel-latest.yml`
 7. If subtitle requests keep getting 429 after retries, it retries the same video without subtitles so the whole workflow does not fail.
 8. Home recommendation selection is handled in `scripts/download_recommended_videos.py`.
 9. Latest channel selection is handled in `scripts/download_channel_latest.py`.
+10. Each `yt-dlp` command has a hard per-video timeout (`PER_VIDEO_TIMEOUT_SECONDS`, default `900`).
+11. Workflows remove zero-byte files before release upload to avoid GitHub Release asset validation errors.
 
 ## Bot Check / "Sign in to confirm you’re not a bot"
 

@@ -203,8 +203,11 @@ def main() -> int:
         json.dump({"failed_count": len(failures), "failed": failures}, f, ensure_ascii=False, indent=2)
 
     with open("downloads_failed.txt", "w", encoding="utf-8") as f:
-        for item in failures:
-            f.write(f"{item['url']} | {item['reason']}\n")
+        if failures:
+            for item in failures:
+                f.write(f"{item['url']} | {item['reason']}\n")
+        else:
+            f.write("no_failed_videos\n")
 
     print("\nDownload run finished.")
     print(f"Successful videos: {success_count}")
