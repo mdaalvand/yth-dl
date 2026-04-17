@@ -10,6 +10,7 @@ Automate YouTube download and YouTube search with GitHub Actions.
 4. Optional chapter embedding (default: `true`)
 5. Upload downloaded files to GitHub Releases
 6. Separate search workflow that publishes rich result details in a Release
+7. New workflow to download up to 20 suggested videos from a source video
 
 ## Workflow: Download Videos
 
@@ -34,6 +35,26 @@ File: `.github/workflows/search-youtube.yml`
 2. `max_results` (optional): number of results (default: `10`)
 3. `sort_by` (optional): how to sort results in release notes
 4. `release_name` (optional): custom release title
+
+## Workflow: Download Suggested Videos (20)
+
+File: `.github/workflows/download-youtube-suggested.yml`
+
+### Inputs
+
+1. `source_video` (required): source YouTube URL or video ID
+2. `max_results` (optional): number of suggested videos (default: `20`)
+3. `quality` (optional): target quality (default: `480`)
+4. `embed_subtitles` (optional): embed subtitles into videos (default: `true`)
+5. `embed_chapters` (optional): embed chapters into videos (default: `true`)
+6. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
+7. `release_name` (optional): custom release title
+
+### How It Picks Suggestions
+
+1. Tries YouTube related videos from the source video metadata first.
+2. If not enough related videos are found, it fills the rest with a fallback search based on source title/channel.
+3. Then it downloads the selected list (up to requested count).
 
 ### Search Output in Release Notes
 
@@ -63,6 +84,7 @@ File: `.github/workflows/search-youtube.yml`
 5. The downloader picks the closest quality (`--format-sort res:<quality>`) instead of forcing one strict format ID.
 6. For `HTTP 429`, the downloader sleeps and retries with backoff (`15s`, `30s`, `45s`, `60s` by default).
 7. If subtitle requests keep getting 429 after retries, it automatically retries the same video without subtitles so the whole workflow does not fail.
+8. Suggested-video download logic is handled in `scripts/download_suggested_videos.py`.
 
 ## Bot Check / "Sign in to confirm you’re not a bot"
 
