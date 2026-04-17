@@ -129,8 +129,7 @@ jobs:
                 size="$(du -h "$file" | cut -f1)"
                 name="$(basename "$file")"
                 encoded_name="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
-                echo "- ${name} (${size})"
-                echo "  Download: ${release_base}/${encoded_name}"
+                echo "- [${name}](${release_base}/${encoded_name}) (${size})"
               done
             else
               echo "- No video files were produced."

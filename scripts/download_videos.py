@@ -111,22 +111,27 @@ def safe_unicode_filename_part(text: str) -> str:
     return s or "video"
 
 
-def read_title_from_mp4_metadata(path: Path) -> str:
+def fetch_title_with_ytdlp(url: str, cookies_exists: bool, command_timeout_seconds: int) -> str:
     try:
         proc = subprocess.run(
             [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format_tags=title",
-                "-of",
-                "default=nk=1:nw=1",
-                str(path),
+                "yt-dlp",
+                "--skip-download",
+                "--no-playlist",
+                "--js-runtimes",
+                "node",
+                "--remote-components",
+                "ejs:github",
+                "--extractor-args",
+                "youtube:player_client=web,tv",
+                "--print",
+                "%(title)s",
+                *(["--cookies", "cookies.txt"] if cookies_exists else []),
+                url,
             ],
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=min(command_timeout_seconds, 120),
         )
         if proc.returncode == 0:
             title = (proc.stdout or "").strip()
@@ -137,14 +142,14 @@ def read_title_from_mp4_metadata(path: Path) -> str:
     return ""
 
 
-def prefix_new_videos(download_dir: str, index: int, before_paths: List[Path]) -> None:
+def prefix_new_videos(download_dir: str, index: int, before_paths: List[Path], preferred_title: str, video_id: str) -> None:
     before_set = {p.name for p in before_paths}
     after_paths = sorted(Path(download_dir).glob("*.mp4"))
     new_paths = [p for p in after_paths if p.name not in before_set]
     for p in new_paths:
-        title = read_title_from_mp4_metadata(p)
-        video_id_match = re.search(r"-([A-Za-z0-9_-]{11})\.mp4$", p.name)
-        video_id = video_id_match.group(1) if video_id_match else "unknown"
+        title = preferred_title
+        if not title:
+            title = p.stem
         base = f"{index:02d}-{safe_unicode_filename_part(title)}-{video_id}.mp4"
         target = p.with_name(base)
         if target.exists():
@@ -230,12 +235,13 @@ def main() -> int:
         print(f"\n=== ({idx}/{len(urls)}) Downloading: {url}")
         mp4_before = sorted(Path("downloads").glob("*.mp4"))
         video_id = extract_video_id_from_url(url)
+        preferred_title = fetch_title_with_ytdlp(url, cookies_exists, command_timeout_seconds)
 
         full_cmd = common_args + chapter_args + subtitle_args + [url]
         result = run_with_429_retry(full_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds)
 
         if result.ok:
-            prefix_new_videos("downloads", idx, mp4_before)
+            prefix_new_videos("downloads", idx, mp4_before, preferred_title, video_id)
             success_count += 1
             continue
 
@@ -248,7 +254,7 @@ def main() -> int:
                 no_sub_cmd, max_429_retries, retry_base_sleep, command_timeout_seconds
             )
             if no_sub_result.ok:
-                prefix_new_videos("downloads", idx, mp4_before)
+                prefix_new_videos("downloads", idx, mp4_before, preferred_title, video_id)
                 print("Downloaded successfully without subtitles due to subtitle 429 limits.")
                 success_count += 1
                 continue
