@@ -1,0 +1,94 @@
+name: Search YouTube
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: "Search query"
+        required: true
+        type: string
+      max_results:
+        description: "How many videos to fetch"
+        required: true
+        default: "10"
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "20"
+          - "30"
+          - "50"
+      sort_by:
+        description: "Sort results in release"
+        required: true
+        default: "relevance"
+        type: choice
+        options:
+          - "relevance"
+          - "view_count"
+          - "upload_date"
+          - "duration"
+      release_name:
+        description: "Optional release title"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yt-dlp
+
+      - name: Search videos
+        env:
+          QUERY: ${{ github.event.inputs.query }}
+          MAX_RESULTS: ${{ github.event.inputs.max_results }}
+        run: |
+          set -euo pipefail
+          yt-dlp \
+            --skip-download \
+            --no-playlist \
+            --dump-single-json \
+            "ytsearch${MAX_RESULTS}:${QUERY}" > search_raw.json
+
+      - name: Build release notes and machine-readable output
+        env:
+          QUERY: ${{ github.event.inputs.query }}
+          MAX_RESULTS: ${{ github.event.inputs.max_results }}
+          SORT_BY: ${{ github.event.inputs.sort_by }}
+        run: |
+          set -euo pipefail
+          python scripts/build_search_report.py
+
+      - name: Build tag
+        id: tag
+        run: |
+          TAG="search-$(date -u +'%Y%m%d-%H%M%S')"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.tag.outputs.tag }}
+          body_path: release_notes.md
+          files: |
+            search_results.json
+            search_raw.json
+

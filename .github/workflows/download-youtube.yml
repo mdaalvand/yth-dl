@@ -1,0 +1,157 @@
+name: Download YouTube Videos
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_inputs:
+        description: "YouTube URLs or video IDs (comma/space/newline separated)"
+        required: true
+        type: string
+      quality:
+        description: "Max video quality (height)"
+        required: true
+        default: "480"
+        type: choice
+        options:
+          - "144"
+          - "240"
+          - "360"
+          - "480"
+          - "720"
+          - "1080"
+      embed_subtitles:
+        description: "Embed subtitles into output video"
+        required: true
+        default: true
+        type: boolean
+      embed_chapters:
+        description: "Embed chapters into output video"
+        required: true
+        default: true
+        type: boolean
+      release_name:
+        description: "Optional release title"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yt-dlp
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg jq
+
+      - name: Download videos
+        env:
+          VIDEO_INPUTS: ${{ github.event.inputs.video_inputs }}
+          QUALITY: ${{ github.event.inputs.quality }}
+          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p downloads
+
+          INPUT_FILE="$(mktemp)"
+          printf '%s\n' "$VIDEO_INPUTS" \
+            | tr ',' '\n' \
+            | tr ' ' '\n' \
+            | sed '/^\s*$/d' > "$INPUT_FILE"
+
+          if [ ! -s "$INPUT_FILE" ]; then
+            echo "No valid video input found."
+            exit 1
+          fi
+
+          while IFS= read -r RAW_ITEM; do
+            ITEM="$(echo "$RAW_ITEM" | xargs)"
+            [ -z "$ITEM" ] && continue
+
+            if [[ "$ITEM" =~ ^https?:// ]]; then
+              URL="$ITEM"
+            else
+              URL="https://www.youtube.com/watch?v=$ITEM"
+            fi
+
+            echo "Downloading: $URL"
+
+            FORMAT_SELECTOR="bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${QUALITY}][ext=mp4]/best[height<=${QUALITY}]"
+
+            ARGS=(
+              --no-playlist
+              --restrict-filenames
+              --merge-output-format mp4
+              --format "$FORMAT_SELECTOR"
+              --paths downloads
+              --output "%(title).180B-%(id)s.%(ext)s"
+            )
+
+            if [ "$EMBED_SUBTITLES" = "true" ]; then
+              ARGS+=(--write-subs --write-auto-subs --sub-langs "all,-live_chat" --embed-subs)
+            fi
+
+            if [ "$EMBED_CHAPTERS" = "true" ]; then
+              ARGS+=(--add-metadata --embed-chapters)
+            fi
+
+            yt-dlp "${ARGS[@]}" "$URL"
+          done < "$INPUT_FILE"
+
+      - name: Build release notes
+        id: notes
+        env:
+          QUALITY: ${{ github.event.inputs.quality }}
+          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+        run: |
+          set -euo pipefail
+
+          TAG="download-$(date -u +'%Y%m%d-%H%M%S')"
+          {
+            echo "# YouTube Download Results"
+            echo
+            echo "- Quality limit: ${QUALITY}p"
+            echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
+            echo "- Chapters embedded: ${EMBED_CHAPTERS}"
+            echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "## Output Files"
+            if ls downloads/* >/dev/null 2>&1; then
+              for file in downloads/*; do
+                size="$(du -h "$file" | cut -f1)"
+                name="$(basename "$file")"
+                echo "- ${name} (${size})"
+              done
+            else
+              echo "- No files were produced."
+            fi
+          } > release_notes.md
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
+          body_path: release_notes.md
+          files: |
+            downloads/**
+
