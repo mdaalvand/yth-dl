@@ -122,34 +122,16 @@ jobs:
             fi
             echo "- Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
-            release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
             echo "## Downloaded Files"
-            echo "### Uploaded Videos"
             if compgen -G "downloads/*.mp4" > /dev/null; then
               for file in downloads/*.mp4; do
                 size="$(du -h "$file" | cut -f1)"
                 name="$(basename "$file")"
-                encoded_name="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$name")"
-                echo "- [${name}](${release_base}/${encoded_name}) (${size})"
+                echo "- ${name} (${size})"
               done
             else
               echo "- No video files were produced."
             fi
-            echo
-            echo "### Side Files (Not Uploaded)"
-            side_found=0
-            if ls downloads/* >/dev/null 2>&1; then
-              for file in downloads/*; do
-                case "$file" in
-                  *.mp4) continue ;;
-                esac
-                side_found=1
-                size="$(du -h "$file" | cut -f1)"
-                name="$(basename "$file")"
-                echo "- \`${name}\` (${size})"
-              done
-            fi
-            [ "$side_found" -eq 0 ] && echo "- None"
             if [ -f downloads_failed.json ]; then
               failed_count="$(jq -r '.failed_count // 0' downloads_failed.json)"
               echo
