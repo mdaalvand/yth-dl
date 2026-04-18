@@ -9,9 +9,11 @@ Automate YouTube download and YouTube search with GitHub Actions.
 3. Optional subtitle embedding (default: `true`)
 4. Optional chapter embedding (default: `true`)
 5. Upload downloaded files to GitHub Releases
-6. Separate search workflow that publishes rich result details in a Release
-7. Home recommendations workflow (personalized using your YouTube cookies)
+6. Search workflow that both publishes rich result details and downloads found videos
+7. Home recommendations workflow (personalized using your YouTube cookies) with sort + selection modes
 8. Workflow + local script to download latest videos from a channel
+9. Workflow to list subscribed channels (default sort: latest upload date)
+10. Workflow to list missed videos from subscribed channels
 
 ## Workflow: Download Videos
 
@@ -35,7 +37,11 @@ File: `.github/workflows/search-youtube.yml`
 1. `query` (required): search keyword(s)
 2. `max_results` (optional): number of results (default: `10`)
 3. `sort_by` (optional): how to sort results in release notes
-4. `release_name` (optional): custom release title
+4. `quality` (optional): target quality for downloading found videos (default: `480`)
+5. `embed_subtitles` (optional): embed subtitles into downloaded videos (default: `true`)
+6. `embed_chapters` (optional): embed chapters into downloaded videos (default: `true`)
+7. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
+8. `release_name` (optional): custom release title
 
 ### Search Output in Release Notes
 
@@ -48,6 +54,7 @@ File: `.github/workflows/search-youtube.yml`
 7. Live status
 8. Direct video URL
 9. Summary stats (total and average views)
+10. Downloaded files (`.mp4`) uploaded to the same release
 
 ## Workflow: Download Home Recommended Videos (20)
 
@@ -56,11 +63,13 @@ File: `.github/workflows/download-youtube-recommended.yml`
 ### Inputs
 
 1. `max_results` (optional): number of recommended videos (default: `20`)
-2. `quality` (optional): target quality (default: `480`)
-3. `embed_subtitles` (optional): embed subtitles into videos (default: `true`)
-4. `embed_chapters` (optional): embed chapters into videos (default: `true`)
-5. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
-6. `release_name` (optional): custom release title
+2. `sort_by` (optional): candidate sort strategy (`feed_order`, `upload_date`, `view_count`, `duration`, `title`)
+3. `selection_mode` (optional): final pick strategy (`sorted`, `random`, `mixed`)
+4. `quality` (optional): target quality (default: `480`)
+5. `embed_subtitles` (optional): embed subtitles into videos (default: `true`)
+6. `embed_chapters` (optional): embed chapters into videos (default: `true`)
+7. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
+8. `release_name` (optional): custom release title
 
 ### Important
 
@@ -105,6 +114,37 @@ File: `.github/workflows/download-youtube-channel-latest.yml`
 5. `embed_chapters` (optional): embed chapters into videos (default: `true`)
 6. `subtitle_langs` (optional): subtitle language filter (default: `fa.*,en.*,fa,en`)
 7. `release_name` (optional): custom release title
+
+## Workflow: List Subscribed Channels
+
+File: `.github/workflows/list-youtube-subscribed-channels.yml`
+
+### Inputs
+
+1. `max_results` (optional): number of channels to list (default: `100`)
+2. `sort_by` (optional): sorting (`latest_upload`, `channel_name`, `channel_id`)
+3. `release_name` (optional): custom release title
+
+### Notes
+
+1. `YT_COOKIES` secret is required.
+2. Default sorting is `latest_upload` (latest video publish date from subscriptions feed).
+
+## Workflow: List Missed Videos From Subscribed Channels
+
+File: `.github/workflows/list-youtube-missed-subscriptions.yml`
+
+### Inputs
+
+1. `max_results` (optional): number of videos to list (default: `50`)
+2. `missed_after_days` (optional): consider a video as missed if its age is at least this many days (default: `1`)
+3. `sort_by` (optional): sorting (`upload_date`, `view_count`, `channel_name`)
+4. `release_name` (optional): custom release title
+
+### Notes
+
+1. `YT_COOKIES` secret is required.
+2. Source is `https://www.youtube.com/feed/subscriptions`.
 
 ## Quick Start
 

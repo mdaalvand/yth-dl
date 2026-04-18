@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import json
 import os
+import random
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
 
@@ -16,11 +18,28 @@ def run_json(cmd: List[str]) -> Dict:
     return json.loads(proc.stdout)
 
 
-def metadata_args(cookies_exists: bool) -> List[str]:
+def run_json_lines(cmd: List[str]) -> List[Dict]:
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(proc.stdout)
+        print(proc.stderr, file=sys.stderr)
+        raise RuntimeError("yt-dlp metadata extraction failed")
+    out: List[Dict] = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def metadata_args(cookies_exists: bool, single_json: bool = True) -> List[str]:
     args = [
         "yt-dlp",
         "--skip-download",
-        "--dump-single-json",
         "--no-playlist",
         "--js-runtimes",
         "node",
@@ -31,9 +50,29 @@ def metadata_args(cookies_exists: bool) -> List[str]:
         "--retries",
         "10",
     ]
+    if single_json:
+        args.append("--dump-single-json")
     if cookies_exists:
         args += ["--cookies", "cookies.txt"]
     return args
+
+
+def to_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def to_upload_key(value: str) -> str:
+    if not value:
+        return ""
+    raw = re.sub(r"\D", "", value)
+    if len(raw) >= 8:
+        return raw[:8]
+    return ""
 
 
 def extract_video_id(text: str) -> str:
@@ -66,8 +105,68 @@ def collect_home_recommendations(home_json: Dict, max_results: int) -> List[Tupl
     return out
 
 
+def enrich_video_metadata(candidates: List[Tuple[str, Dict]], cookies_exists: bool) -> Dict[str, Dict]:
+    urls = [url for url, _ in candidates]
+    if not urls:
+        return {}
+
+    details: Dict[str, Dict] = {}
+    for i in range(0, len(urls), 20):
+        chunk = urls[i : i + 20]
+        cmd = metadata_args(cookies_exists, single_json=False) + ["--dump-json"] + chunk
+        for item in run_json_lines(cmd):
+            vid = extract_video_id(item.get("id", "")) or extract_video_id(item.get("webpage_url", ""))
+            if not vid:
+                continue
+            details[vid] = item
+    return details
+
+
+def sort_candidates(candidates: List[Tuple[str, Dict]], sort_by: str) -> List[Tuple[str, Dict]]:
+    if sort_by == "view_count":
+        return sorted(candidates, key=lambda x: to_int(x[1].get("view_count"), 0), reverse=True)
+    if sort_by == "upload_date":
+        return sorted(candidates, key=lambda x: to_upload_key(x[1].get("upload_date", "")), reverse=True)
+    if sort_by == "duration":
+        return sorted(candidates, key=lambda x: to_int(x[1].get("duration"), 0), reverse=True)
+    if sort_by == "title":
+        return sorted(candidates, key=lambda x: (x[1].get("title") or "").lower())
+    return candidates
+
+
+def pick_candidates(candidates: List[Tuple[str, Dict]], max_results: int, selection_mode: str) -> List[Tuple[str, Dict]]:
+    if len(candidates) <= max_results:
+        return candidates
+
+    if selection_mode == "random":
+        shuffled = candidates[:]
+        random.shuffle(shuffled)
+        return shuffled[:max_results]
+
+    if selection_mode == "mixed":
+        top_n = max_results // 2
+        picked = candidates[:top_n]
+        remaining = candidates[top_n:]
+        random.shuffle(remaining)
+        picked.extend(remaining[: max_results - len(picked)])
+        return picked
+
+    return candidates[:max_results]
+
+
+def merge_item(base_item: Dict, detail_item: Dict) -> Dict:
+    merged = dict(base_item)
+    for key in ("title", "uploader", "channel", "duration", "view_count", "upload_date", "webpage_url", "id"):
+        value = detail_item.get(key)
+        if value not in (None, "", []):
+            merged[key] = value
+    return merged
+
+
 def main() -> int:
     max_results = int((os.getenv("MAX_RESULTS", "20") or "20").strip())
+    sort_by = (os.getenv("RECOMMENDED_SORT_BY", "feed_order") or "feed_order").strip()
+    selection_mode = (os.getenv("RECOMMENDED_SELECTION_MODE", "sorted") or "sorted").strip()
     cookies_exists = os.path.isfile("cookies.txt")
     if not cookies_exists:
         print("cookies.txt is required for personalized home recommendations.")
@@ -83,9 +182,25 @@ def main() -> int:
         home_url,
     ]
     home_json = run_json(home_cmd)
-    recommended = collect_home_recommendations(home_json, max_results)
-    if not recommended:
+    candidates = collect_home_recommendations(home_json, max_results * 5)
+    if not candidates:
         print("No recommended videos found in home feed.")
+        return 1
+
+    details_by_id = enrich_video_metadata(candidates, cookies_exists)
+    enriched: List[Tuple[str, Dict]] = []
+    for url, item in candidates:
+        vid = extract_video_id(url)
+        detail_item = details_by_id.get(vid, {})
+        merged = merge_item(item, detail_item)
+        merged["id"] = vid
+        merged["webpage_url"] = merged.get("webpage_url") or url
+        enriched.append((url, merged))
+
+    sorted_candidates = sort_candidates(enriched, sort_by)
+    recommended = pick_candidates(sorted_candidates, max_results, selection_mode)
+    if not recommended:
+        print("No videos were selected after sorting/filtering.")
         return 1
 
     os.makedirs("downloads", exist_ok=True)
@@ -98,6 +213,9 @@ def main() -> int:
             {
                 "source": home_url,
                 "count": len(recommended),
+                "sort_by": sort_by,
+                "selection_mode": selection_mode,
+                "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "recommended": [
                     {
                         "url": url,
@@ -106,6 +224,7 @@ def main() -> int:
                         "uploader": item.get("uploader") or item.get("channel"),
                         "duration": item.get("duration"),
                         "view_count": item.get("view_count"),
+                        "upload_date": item.get("upload_date"),
                     }
                     for url, item in recommended
                 ],
@@ -118,11 +237,17 @@ def main() -> int:
     with open("recommended_videos.md", "w", encoding="utf-8") as f:
         f.write("# Home Recommended Videos\n\n")
         f.write(f"- Source: {home_url}\n")
+        f.write(f"- Sort by: {sort_by}\n")
+        f.write(f"- Selection mode: {selection_mode}\n")
         f.write(f"- Selected: {len(recommended)}\n\n")
         for idx, (url, item) in enumerate(recommended, start=1):
             title = item.get("title") or "N/A"
             uploader = item.get("uploader") or item.get("channel") or "N/A"
+            upload_date = item.get("upload_date") or "N/A"
+            view_count = item.get("view_count")
+            views_text = f"{view_count:,}" if isinstance(view_count, int) else "N/A"
             f.write(f"{idx}. {title} | {uploader}\n")
+            f.write(f"   - Upload date: {upload_date} | Views: {views_text}\n")
             f.write(f"   - {url}\n")
 
     env = os.environ.copy()

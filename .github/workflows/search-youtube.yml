@@ -28,6 +28,33 @@ on:
           - "view_count"
           - "upload_date"
           - "duration"
+      quality:
+        description: "Target quality for downloading search results (closest available)"
+        required: true
+        default: "480"
+        type: choice
+        options:
+          - "144"
+          - "240"
+          - "360"
+          - "480"
+          - "720"
+          - "1080"
+      embed_subtitles:
+        description: "Embed subtitles into downloaded videos"
+        required: true
+        default: true
+        type: boolean
+      embed_chapters:
+        description: "Embed chapters into downloaded videos"
+        required: true
+        default: true
+        type: boolean
+      subtitle_langs:
+        description: "Subtitle languages for yt-dlp --sub-langs"
+        required: true
+        default: "fa.*,en.*,fa,en"
+        type: string
       release_name:
         description: "Optional release title"
         required: false
@@ -59,6 +86,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install yt-dlp
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg jq
 
       - name: Prepare optional cookies
         env:
@@ -106,6 +135,80 @@ jobs:
           set -euo pipefail
           python scripts/build_search_report.py
 
+      - name: Build URL list from search results
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import json
+
+          with open("search_results.json", "r", encoding="utf-8") as f:
+            entries = json.load(f)
+
+          urls = []
+          for e in entries:
+            url = (e.get("webpage_url") or "").strip()
+            if url and url != "N/A":
+              urls.append(url)
+
+          with open("search_video_urls.txt", "w", encoding="utf-8") as f:
+            for u in urls:
+              f.write(u + "\n")
+          print(f"Prepared {len(urls)} URLs for download.")
+          PY
+
+      - name: Download searched videos
+        env:
+          QUALITY: ${{ github.event.inputs.quality }}
+          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
+          MAX_429_RETRIES: "4"
+          RETRY_BASE_SLEEP_SECONDS: "15"
+          PER_VIDEO_TIMEOUT_SECONDS: "900"
+          CONTINUE_ON_ERROR: "true"
+        run: |
+          set -euo pipefail
+          if [ ! -s search_video_urls.txt ]; then
+            echo "No URLs found from search results."
+            printf '{"failed_count":0,"failed":[]}\n' > downloads_failed.json
+            exit 0
+          fi
+          VIDEO_INPUTS="$(cat search_video_urls.txt)"
+          export VIDEO_INPUTS
+          python scripts/download_videos.py || true
+
+      - name: Append download context to release notes
+        env:
+          QUALITY: ${{ github.event.inputs.quality }}
+          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
+          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
+          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
+        run: |
+          set -euo pipefail
+          {
+            echo
+            echo "## Download Settings"
+            echo "- Quality target: ${QUALITY}p"
+            echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
+            echo "- Subtitle langs: ${SUBTITLE_LANGS}"
+            echo "- Chapters embedded: ${EMBED_CHAPTERS}"
+            if [ -f downloads_failed.json ]; then
+              failed_count="$(jq -r '.failed_count // 0' downloads_failed.json)"
+              echo
+              echo "## Failed Videos"
+              echo "- Failed count: ${failed_count}"
+            fi
+          } >> release_notes.md
+
+      - name: Remove empty files before release upload
+        shell: bash
+        run: |
+          set -e
+          if [ -d downloads ]; then
+            find downloads -type f -size 0 -delete || true
+          fi
+          true
+
       - name: Build tag
         id: tag
         run: |
@@ -113,11 +216,57 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        id: create_release
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.tag.outputs.tag }}
           body_path: release_notes.md
           files: |
+            downloads/*.mp4
             search_results.json
             search_raw.json
+            search_video_urls.txt
+          fail_on_unmatched_files: false
+
+      - name: Finalize release notes from actual assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["TAG"]
+          token = os.environ["GH_TOKEN"]
+
+          def api(path: str, method: str = "GET", data: dict | None = None):
+            url = f"https://api.github.com{path}"
+            body = None if data is None else json.dumps(data).encode("utf-8")
+            req = urllib.request.Request(url, data=body, method=method)
+            req.add_header("Authorization", f"Bearer {token}")
+            req.add_header("Accept", "application/vnd.github+json")
+            req.add_header("X-GitHub-Api-Version", "2022-11-28")
+            if body is not None:
+              req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+              return json.loads(resp.read().decode("utf-8"))
+
+          release = api(f"/repos/{repo}/releases/tags/{tag}")
+          assets = [a for a in release.get("assets", []) if a.get("name", "").lower().endswith(".mp4")]
+          assets.sort(key=lambda a: a.get("name", ""))
+
+          body = release.get("body", "").rstrip() + "\n\n## Downloaded Files\n"
+          if assets:
+            for a in assets:
+              size_mb = int(a.get("size", 0)) / (1024 * 1024)
+              body += f"- [{a['name']}]({a['browser_download_url']}) ({size_mb:.1f} MB)\n"
+          else:
+            body += "- No video files were produced.\n"
+
+          api(f"/repos/{repo}/releases/{release['id']}", method="PATCH", data={"body": body})
+          PY

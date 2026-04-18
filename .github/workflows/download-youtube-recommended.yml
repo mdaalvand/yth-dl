@@ -12,6 +12,26 @@ on:
           - "10"
           - "20"
           - "30"
+      sort_by:
+        description: "Sort recommended candidates before selecting"
+        required: true
+        default: "feed_order"
+        type: choice
+        options:
+          - "feed_order"
+          - "upload_date"
+          - "view_count"
+          - "duration"
+          - "title"
+      selection_mode:
+        description: "How to pick final videos after sorting"
+        required: true
+        default: "sorted"
+        type: choice
+        options:
+          - "sorted"
+          - "random"
+          - "mixed"
       quality:
         description: "Target quality (closest available)"
         required: true
@@ -90,6 +110,8 @@ jobs:
       - name: Download recommended videos
         env:
           MAX_RESULTS: ${{ github.event.inputs.max_results }}
+          RECOMMENDED_SORT_BY: ${{ github.event.inputs.sort_by }}
+          RECOMMENDED_SELECTION_MODE: ${{ github.event.inputs.selection_mode }}
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
           EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
@@ -106,6 +128,8 @@ jobs:
         id: notes
         env:
           MAX_RESULTS: ${{ github.event.inputs.max_results }}
+          RECOMMENDED_SORT_BY: ${{ github.event.inputs.sort_by }}
+          RECOMMENDED_SELECTION_MODE: ${{ github.event.inputs.selection_mode }}
           QUALITY: ${{ github.event.inputs.quality }}
           EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
           EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
@@ -120,6 +144,8 @@ jobs:
             echo
             echo "- Source: https://www.youtube.com/feed/recommended (personalized by your cookies)"
             echo "- Requested recommendations: ${MAX_RESULTS}"
+            echo "- Candidate sort: ${RECOMMENDED_SORT_BY}"
+            echo "- Selection mode: ${RECOMMENDED_SELECTION_MODE}"
             echo "- Quality target: ${QUALITY}p"
             echo "- Subtitles embedded: ${EMBED_SUBTITLES}"
             echo "- Subtitle langs: ${SUBTITLE_LANGS}"
