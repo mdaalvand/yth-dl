@@ -40,7 +40,6 @@ def metadata_args(cookies_exists: bool, single_json: bool = True) -> List[str]:
     args = [
         "yt-dlp",
         "--skip-download",
-        "--no-playlist",
         "--js-runtimes",
         "node",
         "--remote-components",
@@ -103,6 +102,42 @@ def collect_home_recommendations(home_json: Dict, max_results: int) -> List[Tupl
         if len(out) >= max_results:
             break
     return out
+
+
+def collect_fallback_recommendations(home_json: Dict, max_results: int) -> List[Tuple[str, Dict]]:
+    found_ids: List[str] = []
+    seen = set()
+
+    def visit(value):
+        if len(found_ids) >= max_results:
+            return
+        if isinstance(value, dict):
+            for key in ("id", "url", "webpage_url", "original_url"):
+                vid = extract_video_id(str(value.get(key, "")))
+                if vid and vid not in seen:
+                    seen.add(vid)
+                    found_ids.append(vid)
+                    if len(found_ids) >= max_results:
+                        return
+            for v in value.values():
+                visit(v)
+                if len(found_ids) >= max_results:
+                    return
+            return
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+                if len(found_ids) >= max_results:
+                    return
+            return
+        if isinstance(value, str):
+            vid = extract_video_id(value)
+            if vid and vid not in seen:
+                seen.add(vid)
+                found_ids.append(vid)
+
+    visit(home_json)
+    return [(f"https://www.youtube.com/watch?v={vid}", {}) for vid in found_ids[:max_results]]
 
 
 def enrich_video_metadata(candidates: List[Tuple[str, Dict]], cookies_exists: bool) -> Dict[str, Dict]:
@@ -184,7 +219,18 @@ def main() -> int:
     home_json = run_json(home_cmd)
     candidates = collect_home_recommendations(home_json, max_results * 5)
     if not candidates:
-        print("No recommended videos found in home feed.")
+        print("No direct entries found in home feed. Trying fallback extraction...")
+        candidates = collect_fallback_recommendations(home_json, max_results * 5)
+    if not candidates:
+        debug = {
+            "reason": "no_candidates",
+            "top_level_keys": sorted(list(home_json.keys())) if isinstance(home_json, dict) else [],
+            "entries_count": len(home_json.get("entries") or []) if isinstance(home_json, dict) else 0,
+            "home_url": home_url,
+        }
+        with open("recommended_debug_summary.json", "w", encoding="utf-8") as f:
+            json.dump(debug, f, ensure_ascii=False, indent=2)
+        print("No recommended videos found in home feed after fallback extraction.")
         return 1
 
     details_by_id = enrich_video_metadata(candidates, cookies_exists)

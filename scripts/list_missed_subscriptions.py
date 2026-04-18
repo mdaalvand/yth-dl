@@ -23,7 +23,6 @@ def metadata_args(cookies_exists: bool) -> List[str]:
         "--skip-download",
         "--dump-single-json",
         "--flat-playlist",
-        "--no-playlist",
         "--js-runtimes",
         "node",
         "--remote-components",
