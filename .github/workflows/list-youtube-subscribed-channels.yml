@@ -1,6 +1,8 @@
 name: List Subscribed YouTube Channels
 
 on:
+  schedule:
+    - cron: "0 */12 * * *"
   workflow_dispatch:
     inputs:
       max_results:
@@ -34,6 +36,10 @@ jobs:
   list_channels:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      MAX_RESULTS: ${{ github.event.inputs.max_results || '100' }}
+      SORT_BY: ${{ github.event.inputs.sort_by || 'latest_upload' }}
+      RELEASE_NAME: ${{ github.event.inputs.release_name || '' }}
 
     steps:
       - name: Checkout
@@ -69,18 +75,13 @@ jobs:
 
       - name: Build subscribed channels list
         env:
-          MAX_RESULTS: ${{ github.event.inputs.max_results }}
           SCAN_LIMIT: "500"
-          SORT_BY: ${{ github.event.inputs.sort_by }}
         run: |
           set -euo pipefail
           python scripts/list_subscribed_channels.py
 
       - name: Build release notes
         id: notes
-        env:
-          MAX_RESULTS: ${{ github.event.inputs.max_results }}
-          SORT_BY: ${{ github.event.inputs.sort_by }}
         run: |
           set -euo pipefail
           TAG="subscribed-channels-$(date -u +'%Y%m%d-%H%M%S')"
@@ -105,7 +106,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
-          name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
+          name: ${{ env.RELEASE_NAME != '' && env.RELEASE_NAME || steps.notes.outputs.tag }}
           body_path: release_notes.md
           files: |
             subscribed_channels.json

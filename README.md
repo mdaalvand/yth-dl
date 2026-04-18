@@ -75,6 +75,7 @@ File: `.github/workflows/download-youtube-recommended.yml`
 
 1. This workflow reads your personalized recommendations from `https://www.youtube.com/feed/recommended`.
 2. `YT_COOKIES` secret is required. Without cookies, personalized home feed cannot be fetched.
+3. This workflow also runs automatically every 12 hours (`0 */12 * * *`).
 
 ## Local Command: Download Latest Channel Videos
 
@@ -129,6 +130,7 @@ File: `.github/workflows/list-youtube-subscribed-channels.yml`
 
 1. `YT_COOKIES` secret is required.
 2. Default sorting is `latest_upload` (latest video publish date from subscriptions feed).
+3. This workflow also runs automatically every 12 hours (`0 */12 * * *`).
 
 ## Workflow: List Missed Videos From Subscribed Channels
 
@@ -145,6 +147,7 @@ File: `.github/workflows/list-youtube-missed-subscriptions.yml`
 
 1. `YT_COOKIES` secret is required.
 2. Source is `https://www.youtube.com/feed/subscriptions`.
+3. This workflow also runs automatically every 12 hours (`0 */12 * * *`).
 
 ## Quick Start
 

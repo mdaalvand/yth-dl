@@ -1,6 +1,8 @@
 name: Download Home Recommended YouTube Videos
 
 on:
+  schedule:
+    - cron: "0 */12 * * *"
   workflow_dispatch:
     inputs:
       max_results:
@@ -72,6 +74,15 @@ jobs:
   recommended_download:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    env:
+      MAX_RESULTS: ${{ github.event.inputs.max_results || '20' }}
+      RECOMMENDED_SORT_BY: ${{ github.event.inputs.sort_by || 'feed_order' }}
+      RECOMMENDED_SELECTION_MODE: ${{ github.event.inputs.selection_mode || 'sorted' }}
+      QUALITY: ${{ github.event.inputs.quality || '480' }}
+      EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles || 'true' }}
+      EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters || 'true' }}
+      SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs || 'fa.*,en.*,fa,en' }}
+      RELEASE_NAME: ${{ github.event.inputs.release_name || '' }}
 
     steps:
       - name: Checkout
@@ -109,13 +120,6 @@ jobs:
 
       - name: Download recommended videos
         env:
-          MAX_RESULTS: ${{ github.event.inputs.max_results }}
-          RECOMMENDED_SORT_BY: ${{ github.event.inputs.sort_by }}
-          RECOMMENDED_SELECTION_MODE: ${{ github.event.inputs.selection_mode }}
-          QUALITY: ${{ github.event.inputs.quality }}
-          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
-          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
-          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
           MAX_429_RETRIES: "4"
           RETRY_BASE_SLEEP_SECONDS: "15"
           PER_VIDEO_TIMEOUT_SECONDS: "900"
@@ -127,13 +131,6 @@ jobs:
       - name: Build release notes
         id: notes
         env:
-          MAX_RESULTS: ${{ github.event.inputs.max_results }}
-          RECOMMENDED_SORT_BY: ${{ github.event.inputs.sort_by }}
-          RECOMMENDED_SELECTION_MODE: ${{ github.event.inputs.selection_mode }}
-          QUALITY: ${{ github.event.inputs.quality }}
-          EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles }}
-          EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters }}
-          SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs }}
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           set -euo pipefail
@@ -187,7 +184,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
-          name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
+          name: ${{ env.RELEASE_NAME != '' && env.RELEASE_NAME || steps.notes.outputs.tag }}
           body_path: release_notes.md
           files: |
             downloads/*.mp4
