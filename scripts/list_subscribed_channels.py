@@ -44,6 +44,27 @@ def to_upload_key(value: str) -> str:
     return raw[:8] if len(raw) >= 8 else ""
 
 
+def extract_handle(text: str) -> str:
+    value = (text or "").strip()
+    if not value:
+        return ""
+    m = re.search(r"(?:^|/)(@[A-Za-z0-9._-]+)(?:/|$)", value)
+    return m.group(1) if m else ""
+
+
+def extract_channel_username(item: Dict) -> str:
+    for key in ("uploader_id", "channel_url", "uploader_url", "url", "webpage_url"):
+        value = (item.get(key) or "").strip()
+        if not value:
+            continue
+        if key == "uploader_id" and value.startswith("@"):
+            return value
+        handle = extract_handle(value)
+        if handle:
+            return handle
+    return ""
+
+
 def channel_key(item: Dict) -> str:
     return (
         (item.get("channel_id") or "").strip()
@@ -79,6 +100,8 @@ def collect_channels(channels_feed: Dict, subscriptions_feed: Dict) -> List[Dict
         base = {
             "channel_id": item.get("channel_id") or item.get("uploader_id"),
             "channel_name": item.get("channel") or item.get("uploader") or item.get("title"),
+            "channel_title": item.get("title") or item.get("channel") or item.get("uploader") or "",
+            "channel_username": extract_channel_username(item),
             "channel_url": normalize_channel_url(item),
             "latest_upload_date": "",
             "latest_video_title": "",
@@ -93,6 +116,8 @@ def collect_channels(channels_feed: Dict, subscriptions_feed: Dict) -> List[Dict
         base = {
             "channel_id": item.get("channel_id") or item.get("uploader_id"),
             "channel_name": item.get("channel") or item.get("uploader"),
+            "channel_title": item.get("channel") or item.get("uploader") or item.get("title") or "",
+            "channel_username": extract_channel_username(item),
             "channel_url": normalize_channel_url(item),
             "latest_upload_date": item.get("upload_date") or "",
             "latest_video_title": item.get("title") or "",
@@ -109,6 +134,10 @@ def collect_channels(channels_feed: Dict, subscriptions_feed: Dict) -> List[Dict
         current = by_key[key]
         if not current.get("channel_name") and base.get("channel_name"):
             current["channel_name"] = base["channel_name"]
+        if not current.get("channel_title") and base.get("channel_title"):
+            current["channel_title"] = base["channel_title"]
+        if not current.get("channel_username") and base.get("channel_username"):
+            current["channel_username"] = base["channel_username"]
         if not current.get("channel_url") and base.get("channel_url"):
             current["channel_url"] = base["channel_url"]
 
@@ -170,9 +199,11 @@ def main() -> int:
     with open("subscribed_channels.txt", "w", encoding="utf-8") as f:
         for c in channels:
             name = c.get("channel_name") or "N/A"
+            title = c.get("channel_title") or name
+            username = c.get("channel_username") or "N/A"
             url = c.get("channel_url") or ""
             latest = c.get("latest_upload_date") or "N/A"
-            f.write(f"{name} | {latest} | {url}\n")
+            f.write(f"{name} | {title} | {username} | {latest} | {url}\n")
 
     with open("subscribed_channels.md", "w", encoding="utf-8") as f:
         f.write("# Subscribed Channels\n\n")
@@ -180,12 +211,16 @@ def main() -> int:
         f.write(f"- Selected: {len(channels)}\n\n")
         for i, c in enumerate(channels, start=1):
             name = c.get("channel_name") or "N/A"
+            title = c.get("channel_title") or name
+            username = c.get("channel_username") or "N/A"
             cid = c.get("channel_id") or "N/A"
             url = c.get("channel_url") or "N/A"
             latest = c.get("latest_upload_date") or "N/A"
             latest_title = c.get("latest_video_title") or "N/A"
             latest_video_url = c.get("latest_video_url") or "N/A"
             f.write(f"{i}. {name}\n")
+            f.write(f"   - Title (localized/fa if available): {title}\n")
+            f.write(f"   - Username: {username}\n")
             f.write(f"   - Channel ID: {cid}\n")
             f.write(f"   - Channel URL: {url}\n")
             f.write(f"   - Latest upload date: {latest}\n")

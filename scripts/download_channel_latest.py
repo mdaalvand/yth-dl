@@ -11,14 +11,21 @@ def normalize_channel_url(raw: str) -> str:
     value = (raw or "").strip()
     if not value:
         return ""
-    if value.startswith("http://") or value.startswith("https://"):
+
+    if re.fullmatch(r"UC[A-Za-z0-9_-]{22}", value):
+        url = f"https://www.youtube.com/channel/{value}"
+    elif value.startswith("channel/"):
+        url = f"https://www.youtube.com/{value}"
+    elif value.startswith("/channel/") or value.startswith("/@"):
+        url = f"https://www.youtube.com{value}"
+    elif value.startswith("http://") or value.startswith("https://"):
         url = value
     elif value.startswith("@"):
         url = f"https://www.youtube.com/{value}"
     else:
         url = f"https://www.youtube.com/{value}"
 
-    if "/videos" not in url:
+    if not re.search(r"/(videos|shorts|streams|featured)(?:/|$)", url):
         url = url.rstrip("/") + "/videos"
     return url
 
