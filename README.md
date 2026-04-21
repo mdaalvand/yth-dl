@@ -76,6 +76,8 @@ File: `.github/workflows/download-youtube-recommended.yml`
 1. This workflow reads your personalized recommendations from `https://www.youtube.com/feed/recommended`.
 2. `YT_COOKIES` secret is required. Without cookies, personalized home feed cannot be fetched.
 3. This workflow also runs automatically every 12 hours (`0 */12 * * *`).
+4. In scheduled runs, defaults are forced to `max_results=30`, `sort_by=upload_date`, `selection_mode=random`.
+5. In `random` mode, selection happens from the top-ranked candidate pool (not the full feed) to keep picks relatively fresh.
 
 ## Local Command: Download Latest Channel Videos
 

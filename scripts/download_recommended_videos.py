@@ -174,9 +174,11 @@ def pick_candidates(candidates: List[Tuple[str, Dict]], max_results: int, select
         return candidates
 
     if selection_mode == "random":
-        shuffled = candidates[:]
-        random.shuffle(shuffled)
-        return shuffled[:max_results]
+        # Keep randomness while biasing toward highest-ranked candidates.
+        pool_size = min(len(candidates), max_results * 3)
+        pool = candidates[:pool_size]
+        random.shuffle(pool)
+        return pool[:max_results]
 
     if selection_mode == "mixed":
         top_n = max_results // 2
