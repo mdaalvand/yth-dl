@@ -69,6 +69,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg jq
 
+      - name: Set Release Name
+        id: release_meta
+        run: |
+          set -euo pipefail
+          release_stamp="$(date -u +'%Y-%m-%d %H-%M-%S UTC')"
+          custom_release_name="${{ github.event.inputs.release_name }}"
+          if [ -n "$custom_release_name" ]; then
+            release_name="${release_stamp} - ${custom_release_name}"
+          else
+            release_name="${release_stamp} - Download YouTube Videos"
+          fi
+          echo "release_name=${release_name}" >> "$GITHUB_OUTPUT"
+
       - name: Prepare optional cookies
         env:
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
@@ -146,7 +159,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
-          name: ${{ github.event.inputs.release_name != '' && github.event.inputs.release_name || steps.notes.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.release_name }}
           body_path: release_notes.md
           files: |
             downloads/*.mp4

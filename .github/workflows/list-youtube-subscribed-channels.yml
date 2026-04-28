@@ -1,8 +1,6 @@
 name: List Subscribed YouTube Channels
 
 on:
-  schedule:
-    - cron: "0 */12 * * *"
   workflow_dispatch:
     inputs:
       max_results:
@@ -39,8 +37,6 @@ jobs:
     env:
       MAX_RESULTS: ${{ github.event.inputs.max_results || '100' }}
       SORT_BY: ${{ github.event.inputs.sort_by || 'latest_upload' }}
-      RELEASE_NAME: ${{ github.event.inputs.release_name || '' }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -59,6 +55,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install yt-dlp
+
+      - name: Set Release Name
+        id: release_meta
+        run: |
+          set -euo pipefail
+          release_stamp="$(date -u +'%Y-%m-%d %H-%M-%S UTC')"
+          custom_release_name="${{ github.event.inputs.release_name }}"
+          if [ -n "$custom_release_name" ]; then
+            release_name="${release_stamp} - ${custom_release_name}"
+          else
+            release_name="${release_stamp} - List Subscribed YouTube Channels"
+          fi
+          echo "release_name=${release_name}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare required cookies
         env:
@@ -106,7 +115,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.tag }}
-          name: ${{ env.RELEASE_NAME != '' && env.RELEASE_NAME || steps.notes.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.release_name }}
           body_path: release_notes.md
           files: |
             subscribed_channels.json
