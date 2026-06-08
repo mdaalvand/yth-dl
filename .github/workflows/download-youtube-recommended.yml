@@ -1,8 +1,6 @@
 name: Download Home Recommended YouTube Videos
 
 on:
-  schedule:
-    - cron: "0 */12 * * *"
   workflow_dispatch:
     inputs:
       max_results:
@@ -75,14 +73,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      MAX_RESULTS: ${{ github.event_name == 'schedule' && '30' || github.event.inputs.max_results || '20' }}
-      RECOMMENDED_SORT_BY: ${{ github.event_name == 'schedule' && 'upload_date' || github.event.inputs.sort_by || 'feed_order' }}
-      RECOMMENDED_SELECTION_MODE: ${{ github.event_name == 'schedule' && 'random' || github.event.inputs.selection_mode || 'sorted' }}
+      MAX_RESULTS: ${{ github.event.inputs.max_results || '20' }}
+      RECOMMENDED_SORT_BY: ${{ github.event.inputs.sort_by || 'feed_order' }}
+      RECOMMENDED_SELECTION_MODE: ${{ github.event.inputs.selection_mode || 'sorted' }}
       QUALITY: ${{ github.event.inputs.quality || '480' }}
       EMBED_SUBTITLES: ${{ github.event.inputs.embed_subtitles || 'true' }}
       EMBED_CHAPTERS: ${{ github.event.inputs.embed_chapters || 'true' }}
       SUBTITLE_LANGS: ${{ github.event.inputs.subtitle_langs || 'fa.*,en.*,fa,en' }}
-      RELEASE_NAME_INPUT: ${{ github.event_name == 'schedule' && '' || github.event.inputs.release_name || '' }}
+      RELEASE_NAME_INPUT: ${{ github.event.inputs.release_name || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
