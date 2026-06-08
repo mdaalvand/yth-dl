@@ -131,7 +131,7 @@ File: `.github/workflows/list-youtube-subscribed-channels.yml`
 
 1. `YT_COOKIES` secret is required.
 2. Default sorting is `latest_upload` (latest video publish date from subscriptions feed).
-3. This workflow also runs automatically every 12 hours (`0 */12 * * *`).
+3. This workflow runs manually from `workflow_dispatch`.
 
 ## Workflow: List Missed Videos From Subscribed Channels
 
@@ -148,7 +148,23 @@ File: `.github/workflows/list-youtube-missed-subscriptions.yml`
 
 1. `YT_COOKIES` secret is required.
 2. Source is `https://www.youtube.com/feed/subscriptions`.
-3. This workflow also runs automatically every 12 hours (`0 */12 * * *`).
+3. This workflow runs manually from `workflow_dispatch`.
+
+## Maintenance: Clean GitHub History
+
+Script: `scripts/github_history_cleanup.py`
+
+Use this to delete GitHub releases, release tags, workflow runs, and workflow artifacts for the current repository:
+
+```bash
+python3 scripts/github_history_cleanup.py
+```
+
+Preview first without deleting:
+
+```bash
+python3 scripts/github_history_cleanup.py --dry-run
+```
 
 ## Quick Start
 

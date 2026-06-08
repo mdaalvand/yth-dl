@@ -58,25 +58,36 @@ def api_client(repo: RepoInfo) -> tuple[dict[str, str], str]:
 
 def api_json(headers: dict[str, str], url: str) -> object:
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.load(resp)
 
 
-def api_delete(headers: dict[str, str], url: str) -> None:
+def api_delete(headers: dict[str, str], url: str) -> bool:
     req = urllib.request.Request(url, headers=headers, method="DELETE")
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             resp.read()
+        return True
     except HTTPError as exc:
-        if exc.code != 404:
-            raise
+        if exc.code == 404:
+            return False
+        if exc.code in (403, 422):
+            print(f"warning: could not delete {url}: HTTP {exc.code}", file=sys.stderr, flush=True)
+            return False
+        raise
 
 
 def paginate_items(headers: dict[str, str], base_url: str, key: str | None = None) -> list[dict]:
     items: list[dict] = []
     page = 1
     while True:
-        data = api_json(headers, f"{base_url}?per_page=100&page={page}")
+        try:
+            data = api_json(headers, f"{base_url}?per_page=100&page={page}")
+        except HTTPError as exc:
+            if exc.code in (403, 404, 422):
+                print(f"warning: could not list {base_url}: HTTP {exc.code}", file=sys.stderr, flush=True)
+                break
+            raise
         if not data:
             break
         if key is None:
@@ -99,7 +110,7 @@ def delete_local_tags(repo: Path, dry_run: bool) -> list[str]:
     tags = [tag.strip() for tag in output if tag.strip()]
     for tag in tags:
         if dry_run:
-            print(f"[dry-run] local tag: {tag}")
+            print(f"[dry-run] local tag: {tag}", flush=True)
             continue
         run_git(repo, "tag", "-d", tag)
     return tags
@@ -126,7 +137,7 @@ def delete_remote_tags(repo: Path, dry_run: bool) -> list[str]:
     for start in range(0, len(tags), 20):
         batch = tags[start : start + 20]
         if dry_run:
-            print(f"[dry-run] remote tags batch: {', '.join(batch)}")
+            print(f"[dry-run] remote tags batch: {', '.join(batch)}", flush=True)
             continue
         run_git(repo, "push", "origin", "--delete", *batch)
     return tags
@@ -139,7 +150,7 @@ def delete_releases(headers: dict[str, str], base_url: str, dry_run: bool) -> li
         name = release.get("name", "")
         tag = release.get("tag_name", "")
         if dry_run:
-            print(f"[dry-run] release: id={rid} tag={tag} name={name}")
+            print(f"[dry-run] release: id={rid} tag={tag} name={name}", flush=True)
             continue
         api_delete(headers, f"{base_url}/releases/{rid}")
     return releases
@@ -152,7 +163,7 @@ def delete_workflow_runs(headers: dict[str, str], base_url: str, dry_run: bool) 
         name = run.get("name", "")
         status = run.get("status", "")
         if dry_run:
-            print(f"[dry-run] run: id={run_id} status={status} name={name}")
+            print(f"[dry-run] run: id={run_id} status={status} name={name}", flush=True)
             continue
         api_delete(headers, f"{base_url}/actions/runs/{run_id}")
     return runs
@@ -164,7 +175,7 @@ def delete_workflow_artifacts(headers: dict[str, str], base_url: str, dry_run: b
         artifact_id = artifact["id"]
         name = artifact.get("name", "")
         if dry_run:
-            print(f"[dry-run] artifact: id={artifact_id} name={name}")
+            print(f"[dry-run] artifact: id={artifact_id} name={name}", flush=True)
             continue
         api_delete(headers, f"{base_url}/actions/artifacts/{artifact_id}")
     return artifacts
@@ -179,7 +190,7 @@ def repo_path(value: str) -> Path:
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("repos", nargs="+", type=repo_path, help="Local git repository paths")
+    parser.add_argument("repos", nargs="*", type=repo_path, help="Local git repository paths")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted")
     parser.add_argument("--no-tags", action="store_true", help="Skip tag deletion")
     parser.add_argument("--no-releases", action="store_true", help="Skip release deletion")
@@ -190,31 +201,33 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 
 def main(argv: Iterable[str]) -> int:
     args = parse_args(argv)
+    if not args.repos:
+        args.repos = [Path.cwd().resolve()]
     overall = 0
 
     for repo_path_value in args.repos:
         repo = parse_repo_info(repo_path_value)
         headers, base_url = api_client(repo)
-        print(f"== {repo.slug} ==")
+        print(f"== {repo.slug} ==", flush=True)
+
+        if not args.no_releases:
+            releases = delete_releases(headers, base_url, args.dry_run)
+            print(f"releases: {len(releases)}", flush=True)
+
+        if not args.no_runs:
+            runs = delete_workflow_runs(headers, base_url, args.dry_run)
+            print(f"workflow runs: {len(runs)}", flush=True)
+
+        if not args.no_artifacts:
+            artifacts = delete_workflow_artifacts(headers, base_url, args.dry_run)
+            print(f"artifacts: {len(artifacts)}", flush=True)
 
         if not args.no_tags:
             local_tags = delete_local_tags(repo.path, args.dry_run)
             remote_tags = delete_remote_tags(repo.path, args.dry_run)
-            print(f"tags: local={len(local_tags)} remote={len(remote_tags)}")
+            print(f"tags: local={len(local_tags)} remote={len(remote_tags)}", flush=True)
 
-        if not args.no_releases:
-            releases = delete_releases(headers, base_url, args.dry_run)
-            print(f"releases: {len(releases)}")
-
-        if not args.no_runs:
-            runs = delete_workflow_runs(headers, base_url, args.dry_run)
-            print(f"workflow runs: {len(runs)}")
-
-        if not args.no_artifacts:
-            artifacts = delete_workflow_artifacts(headers, base_url, args.dry_run)
-            print(f"artifacts: {len(artifacts)}")
-
-        print()
+        print(flush=True)
 
     return overall
 
